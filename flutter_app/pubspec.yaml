@@ -1,0 +1,56 @@
+name: blind_assist
+description: AI-Powered Indoor Navigation & Obstacle Avoidance App for Visually Impaired
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Image processing
+  image: ^4.1.7
+  
+  # State management
+  provider: ^6.1.2
+  
+  # Permissions
+  permission_handler: ^11.3.1
+  
+  # Camera
+  camera: ^0.10.5+9
+  
+  # Text-to-Speech
+  flutter_tts: ^3.8.5
+  
+  # Haptic feedback
+  vibration: ^3.1.5
+  
+  # ONNX Runtime
+  onnxruntime: ^1.4.1
+  
+  # Settings & Storage
+  shared_preferences: ^2.2.2
+  sqflite: ^2.3.2
+  path_provider: ^2.1.2
+  
+  # Location & Emergency
+  geolocator: ^11.0.0
+  url_launcher: ^6.2.4
+  
+  # Voice commands removed due to build issues with speech_to_text
+  # Keeping voice_command_service.dart as stub for future implementation
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  
+  assets:
+    - assets/models/yolov8n.onnx
+    - assets/models/labels.txt
+
