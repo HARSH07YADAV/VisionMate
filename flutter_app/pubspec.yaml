@@ -39,8 +39,11 @@ dependencies:
   geolocator: ^11.0.0
   url_launcher: ^6.2.4
   
-  # Voice commands removed due to build issues with speech_to_text
-  # Keeping voice_command_service.dart as stub for future implementation
+  # Voice commands
+  speech_to_text: ^7.0.0
+  
+  # Shake detection for hands-free activation
+  sensors_plus: ^4.0.2
 
 dev_dependencies:
   flutter_test:

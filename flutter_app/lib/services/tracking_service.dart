@@ -9,7 +9,7 @@ class TrackingService extends ChangeNotifier {
   
   static const double _iouThreshold = 0.5;
   static const int _maxMissedFrames = 3;
-  static const Duration _minReAnnounceDuration = Duration(seconds: 5);
+  static const Duration _minReAnnounceDuration = Duration(seconds: 3);
 
   List<TrackedObject> get trackedObjects => _trackedObjects.values.toList();
 
@@ -131,7 +131,7 @@ class TrackedObject {
   /// Check if enough time passed for re-announcement
   bool get shouldReAnnounce {
     final timeSince = DateTime.now().difference(lastAnnounced);
-    return timeSince > const Duration(seconds: 5);
+    return timeSince > const Duration(seconds: 3);
   }
 
   /// Age of this track

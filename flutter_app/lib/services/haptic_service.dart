@@ -206,6 +206,17 @@ class HapticService extends ChangeNotifier {
     }
   }
 
+  /// Tap feedback for activation (slightly longer than tick)
+  Future<void> vibrateTap() async {
+    if (!_hasVibrator || !_enabled) return;
+
+    if (_hasAmplitudeControl) {
+      await Vibration.vibrate(duration: 50, amplitude: 180);
+    } else {
+      await Vibration.vibrate(duration: 50);
+    }
+  }
+
   /// Cancel vibration
   Future<void> cancel() async {
     await Vibration.cancel();

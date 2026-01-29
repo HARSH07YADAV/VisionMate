@@ -14,6 +14,7 @@ import '../services/emergency_service.dart';
 import '../services/voice_command_service.dart';
 import '../services/tracking_service.dart';
 import '../services/navigation_guidance_service.dart';
+import '../services/accessibility_activation_service.dart';
 import '../core/risk_calculator.dart';
 import '../widgets/detection_overlay.dart';
 
@@ -75,6 +76,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     // Set up voice commands
     _setupVoiceCommands(voiceService);
+    
+    // Set up hands-free activation (shake, volume button, etc.)
+    _setupAccessibilityActivation();
 
     // Set emergency contact from settings
     emergencyService.setEmergencyContact(settingsService.emergencyContact);
@@ -91,20 +95,51 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     });
 
-    // Announce ready
+    // Announce ready with accessible instructions
     if (onnxService.isInitialized) {
-      ttsService.speak('BlindAssist ready. Tap the large button to start.');
+      ttsService.speak('BlindAssist ready. Shake phone or press volume up to speak a command. Double tap screen to describe what is ahead.');
     } else {
       ttsService.speak('Warning: Detection model failed to load.');
     }
   }
 
+  /// Set up hands-free voice activation for blind users
+  void _setupAccessibilityActivation() {
+    final activationService = context.read<AccessibilityActivationService>();
+    final voiceService = context.read<VoiceCommandService>();
+    final ttsService = context.read<TTSService>();
+    final hapticService = context.read<HapticService>();
+    
+    // Initialize activation service
+    activationService.initialize();
+    
+    // When activated, start voice recognition
+    activationService.onActivate = () async {
+      // Give haptic feedback
+      await hapticService.vibrateTap();
+      // Start listening
+      await voiceService.startListening();
+    };
+    
+    // Provide TTS feedback for activation
+    activationService.onFeedback = (String message) {
+      ttsService.speakImmediately(message);
+    };
+  }
+
   void _setupVoiceCommands(VoiceCommandService voiceService) {
+    final tts = context.read<TTSService>();
+    
     voiceService.onWhatsAhead = _announceCurrentDetections;
     voiceService.onStart = _startDetection;
     voiceService.onStop = _stopDetection;
     voiceService.onEmergency = _triggerEmergency;
     voiceService.onRepeat = _repeatLastAnnouncement;
+    voiceService.onFaster = () => tts.increaseSpeed();
+    voiceService.onSlower = () => tts.decreaseSpeed();
+    voiceService.onLouder = () => tts.increaseVolume();
+    voiceService.onQuieter = () => tts.decreaseVolume();
+    voiceService.onSettings = () => Navigator.pushNamed(context, '/settings');
     
     // Enable if setting is on
     final settings = context.read<SettingsService>();
@@ -247,10 +282,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // Run detection
       var detections = await onnxService.detectObjects(image);
 
-      // Filter by navigation mode (Feature 18)
-      detections = detections.where((d) => 
-        settings.navigationMode.isRelevant(d.className)
-      ).toList();
+      // Sort by navigation mode priority (Feature 18)
+      // Priority objects come first, but ALL objects are kept
+      detections.sort((a, b) {
+        final aPriority = settings.navigationMode.isRelevant(a.className) ? 0 : 1;
+        final bPriority = settings.navigationMode.isRelevant(b.className) ? 0 : 1;
+        return aPriority.compareTo(bPriority);
+      });
 
       // Calculate risks
       final risks = _riskCalculator.calculateForAll(
@@ -315,24 +353,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Status bar
-            _buildStatusBar(),
+    final activationService = context.watch<AccessibilityActivationService>();
+    
+    return GestureDetector(
+      // Feature: Double-tap anywhere to ask "what's ahead"
+      onDoubleTap: () {
+        activationService.onDoubleTap();
+        _announceCurrentDetections();
+      },
+      // Feature: Long-press anywhere to start voice commands
+      onLongPress: () {
+        activationService.onLongPress();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: SafeArea(
+          child: Column(
+            children: [
+              // Status bar
+              _buildStatusBar(),
 
-            // Camera preview with overlay
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _buildCameraPreview(),
-            ),
+              // Camera preview with overlay
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _buildCameraPreview(),
+              ),
 
-            // Control panel with large buttons
-            _buildControlPanel(),
-          ],
+              // Control panel with large buttons
+              _buildControlPanel(),
+            ],
+          ),
         ),
       ),
     );
@@ -551,6 +602,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                           SizedBox(height: 4),
                           Text('Settings'),
                         ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Voice command microphone button
+              Expanded(
+                child: Semantics(
+                  button: true,
+                  label: 'Voice commands',
+                  child: Consumer<VoiceCommandService>(
+                    builder: (context, voiceService, _) => SizedBox(
+                      height: 80,
+                      child: ElevatedButton(
+                        onPressed: voiceService.isInitialized 
+                            ? () => voiceService.toggleListening()
+                            : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: voiceService.isListening 
+                              ? Colors.green 
+                              : null,
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              voiceService.isListening 
+                                  ? Icons.mic 
+                                  : Icons.mic_none,
+                              size: 28,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(voiceService.isListening ? 'Listening' : 'Voice'),
+                          ],
+                        ),
                       ),
                     ),
                   ),

@@ -67,6 +67,46 @@ class TTSService extends ChangeNotifier {
     }
   }
 
+  /// Increase speech speed (Feature 11 voice command)
+  Future<void> increaseSpeed() async {
+    if (_settings != null) {
+      final newRate = (_settings!.speechRate + 0.1).clamp(0.1, 1.0);
+      await _settings!.setSpeechRate(newRate);
+      await _flutterTts.setSpeechRate(newRate);
+      await speak('Speed increased', priority: SpeechPriority.high);
+    }
+  }
+
+  /// Decrease speech speed (Feature 11 voice command)
+  Future<void> decreaseSpeed() async {
+    if (_settings != null) {
+      final newRate = (_settings!.speechRate - 0.1).clamp(0.1, 1.0);
+      await _settings!.setSpeechRate(newRate);
+      await _flutterTts.setSpeechRate(newRate);
+      await speak('Speed decreased', priority: SpeechPriority.high);
+    }
+  }
+
+  /// Increase speech volume (Feature 11 voice command)
+  Future<void> increaseVolume() async {
+    if (_settings != null) {
+      final newVol = (_settings!.speechVolume + 0.2).clamp(0.2, 1.0);
+      await _settings!.setSpeechVolume(newVol);
+      await _flutterTts.setVolume(newVol);
+      await speak('Volume increased', priority: SpeechPriority.high);
+    }
+  }
+
+  /// Decrease speech volume (Feature 11 voice command)
+  Future<void> decreaseVolume() async {
+    if (_settings != null) {
+      final newVol = (_settings!.speechVolume - 0.2).clamp(0.2, 1.0);
+      await _settings!.setSpeechVolume(newVol);
+      await _flutterTts.setVolume(newVol);
+      await speak('Volume decreased', priority: SpeechPriority.high);
+    }
+  }
+
   /// Speak with priority and spatial audio hint
   Future<void> speak(
     String message, {
