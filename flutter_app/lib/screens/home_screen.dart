@@ -15,6 +15,8 @@ import '../services/voice_command_service.dart';
 import '../services/tracking_service.dart';
 import '../services/navigation_guidance_service.dart';
 import '../services/accessibility_activation_service.dart';
+import '../services/ocr_service.dart';
+import '../services/context_service.dart';
 import '../core/risk_calculator.dart';
 import '../widgets/detection_overlay.dart';
 
@@ -95,9 +97,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     });
 
-    // Announce ready with accessible instructions
+    // Calm, reassuring startup message
     if (onnxService.isInitialized) {
-      ttsService.speak('BlindAssist ready. Shake phone or press volume up to speak a command. Double tap screen to describe what is ahead.');
+      ttsService.speak('BlindAssist ready. Shake phone, press volume up, or double tap to speak. I\'m here with you.');
     } else {
       ttsService.speak('Warning: Detection model failed to load.');
     }
@@ -115,9 +117,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     
     // When activated, start voice recognition
     activationService.onActivate = () async {
-      // Give haptic feedback
       await hapticService.vibrateTap();
-      // Start listening
       await voiceService.startListening();
     };
     
@@ -125,45 +125,143 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     activationService.onFeedback = (String message) {
       ttsService.speakImmediately(message);
     };
+    
+    // Fall detection: Ask "Are you okay?"
+    activationService.onFallDetected = () {
+      hapticService.vibrateEmergency();
+      ttsService.askAreYouOkay();
+    };
+    
+    // Fall confirmed (no response) - Trigger SOS
+    activationService.onFallConfirmed = () async {
+      ttsService.speakEmergency('No response detected. Sending emergency alert.');
+      await _triggerEmergency();
+    };
+    
+    // Fall cancelled (user is okay)
+    activationService.onFallCancelled = () {
+      ttsService.confirmSafe();
+    };
   }
 
   void _setupVoiceCommands(VoiceCommandService voiceService) {
     final tts = context.read<TTSService>();
+    final activationService = context.read<AccessibilityActivationService>();
     
     voiceService.onWhatsAhead = _announceCurrentDetections;
     voiceService.onStart = _startDetection;
     voiceService.onStop = _stopDetection;
     voiceService.onEmergency = _triggerEmergency;
-    voiceService.onRepeat = _repeatLastAnnouncement;
+    voiceService.onRepeat = () => tts.repeatLast();
     voiceService.onFaster = () => tts.increaseSpeed();
     voiceService.onSlower = () => tts.decreaseSpeed();
     voiceService.onLouder = () => tts.increaseVolume();
     voiceService.onQuieter = () => tts.decreaseVolume();
     voiceService.onSettings = () => Navigator.pushNamed(context, '/settings');
     
+    // New: Find object command
+    voiceService.onFindObject = (String objectName) => _findObject(objectName);
+    
+    // New: Path clear check
+    voiceService.onPathClear = _announcePathStatus;
+    
+    // New: I'm okay response (for fall detection)
+    voiceService.onImOkay = () => activationService.confirmUserOkay();
+    
+    // New: Read text command
+    voiceService.onReadText = _readTextFromCamera;
+    
+    // New: Unknown command feedback
+    voiceService.onUnknownCommand = (String words) {
+      tts.speak("I didn't understand. Try 'what's ahead' or 'help'.");
+    };
+    
     // Enable if setting is on
     final settings = context.read<SettingsService>();
     if (settings.voiceCommandsEnabled) {
       voiceService.setEnabled(true);
-      voiceService.startListening();
+    }
+  }
+  
+  /// Find a specific object in detections
+  void _findObject(String objectName) {
+    final tts = context.read<TTSService>();
+    final lower = objectName.toLowerCase();
+    
+    final found = _detections.where(
+      (d) => d.className.toLowerCase().contains(lower)
+    ).toList();
+    
+    if (found.isEmpty) {
+      tts.speakImmediately('$objectName not found. Try scanning around.');
+    } else {
+      final obj = found.first;
+      tts.speakImmediately('Found $objectName, ${obj.distanceDescription}, ${obj.relativePosition?.description ?? 'ahead'}.');
+    }
+  }
+  
+  /// Announce if path is clear or blocked
+  void _announcePathStatus() {
+    final tts = context.read<TTSService>();
+    if (_detections.isEmpty) {
+      tts.speakImmediately('Path ahead is clear. You can go.');
+    } else {
+      final nearest = _detections.first;
+      tts.speakImmediately('Path has obstacles. ${nearest.className} ${nearest.distanceDescription}.');
+    }
+  }
+  
+  /// Read text from camera using OCR
+  Future<void> _readTextFromCamera() async {
+    final tts = context.read<TTSService>();
+    final ocrService = context.read<OcrService>();
+    final cameraService = context.read<CameraService>();
+    
+    if (!ocrService.isInitialized) {
+      await ocrService.initialize();
+    }
+    
+    tts.speakImmediately('Scanning for text. Hold the phone steady.');
+    
+    // Capture current frame
+    if (cameraService.controller == null) {
+      tts.speakImmediately('Camera not available.');
+      return;
+    }
+    
+    try {
+      // Take a picture and read text
+      final image = await cameraService.controller!.takePicture();
+      final text = await ocrService.recognizeFromFile(image.path);
+      
+      if (text.isEmpty) {
+        tts.speakImmediately('No text found. Try moving the camera closer.');
+      } else {
+        // Format and read the text
+        final formatted = ocrService.summarizeText(text);
+        
+        if (ocrService.isMedicineLabel(text)) {
+          tts.speakImmediately('Medicine label detected. $formatted');
+        } else {
+          tts.speakImmediately(formatted);
+        }
+      }
+    } catch (e) {
+      debugPrint('[OCR] Error: $e');
+      tts.speakImmediately('Could not read text. Please try again.');
     }
   }
 
   void _announceCurrentDetections() {
     final tts = context.read<TTSService>();
     if (_detections.isEmpty) {
-      tts.speakImmediately('No obstacles detected ahead.');
+      tts.speakImmediately('Path ahead is clear.');
     } else {
-      final desc = _detections.take(3).map((d) => 
-        '${d.className} ${d.distanceDescription}'
-      ).join(', ');
-      tts.speakImmediately('Detected: $desc');
-    }
-  }
-
-  void _repeatLastAnnouncement() {
-    if (_risks.isNotEmpty) {
-      context.read<TTSService>().speakRisk(_risks.first);
+      // Announce only top 2, in calm format
+      final desc = _detections.take(2).map((d) => 
+        '${d.className}, ${d.distanceDescription}'
+      ).join('. ');
+      tts.speakImmediately(desc);
     }
   }
 

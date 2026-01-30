@@ -4,22 +4,26 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_recognition_error.dart';
 
-/// Voice command types
+/// Voice command types - extended for natural language
 enum VoiceCommand {
-  whatsAhead,     // "What's ahead", "What do you see"
-  start,          // "Start", "Begin", "Go"
-  stop,           // "Stop", "Pause", "Wait"
-  emergency,      // "Help", "Emergency", "SOS"
+  whatsAhead,     // "What's ahead", "What do you see", "What's in front"
+  start,          // "Start", "Begin", "Go", "Guide me"
+  stop,           // "Stop", "Pause", "Wait", "Be quiet"
+  emergency,      // "Help", "Help me", "Emergency", "SOS"
   repeat,         // "Repeat", "Again", "Say that again"
   faster,         // "Faster", "Speed up"
   slower,         // "Slower", "Slow down"
   louder,         // "Louder", "Volume up"
   quieter,        // "Quieter", "Volume down"
   settings,       // "Settings", "Options"
+  findObject,     // "Find the door", "Where is the chair"
+  readText,       // "Read this", "What does it say"
+  pathClear,      // "Is the path clear"
+  imOkay,         // "I'm okay", "I'm fine" (for fall response)
   unknown,        // Unrecognized command
 }
 
-/// Voice command service (Feature 11) - Full speech recognition implementation
+/// Voice command service with natural language understanding
 class VoiceCommandService extends ChangeNotifier {
   final stt.SpeechToText _speech = stt.SpeechToText();
   
@@ -41,7 +45,12 @@ class VoiceCommandService extends ChangeNotifier {
   Function? onLouder;
   Function? onQuieter;
   Function? onSettings;
+  Function(String)? onFindObject;  // Pass the object name
+  Function? onReadText;
+  Function? onPathClear;
+  Function? onImOkay;
   Function(VoiceCommand, String)? onAnyCommand;
+  Function(String)? onUnknownCommand;  // For feedback on unrecognized
 
   bool get isInitialized => _isInitialized;
   bool get isListening => _isListening;
@@ -60,11 +69,9 @@ class VoiceCommandService extends ChangeNotifier {
       );
       
       if (_isInitialized) {
-        debugPrint('[Voice] Speech recognition initialized successfully');
-        final locales = await _speech.locales();
-        debugPrint('[Voice] Available locales: ${locales.length}');
+        debugPrint('[Voice] Speech recognition initialized');
       } else {
-        debugPrint('[Voice] Speech recognition not available on this device');
+        debugPrint('[Voice] Speech recognition not available');
       }
       
       notifyListeners();
@@ -77,9 +84,7 @@ class VoiceCommandService extends ChangeNotifier {
     }
   }
 
-  /// Status callback
   void _onStatus(String status) {
-    debugPrint('[Voice] Status: $status');
     if (status == 'listening') {
       _isListening = true;
     } else if (status == 'notListening' || status == 'done') {
@@ -88,45 +93,31 @@ class VoiceCommandService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Error callback
   void _onError(SpeechRecognitionError error) {
     debugPrint('[Voice] Error: ${error.errorMsg}');
     _isListening = false;
     notifyListeners();
   }
 
-  /// Enable/disable voice commands
   void setEnabled(bool enabled) {
     _enabled = enabled;
-    if (!enabled) {
-      stopListening();
-    }
+    if (!enabled) stopListening();
     notifyListeners();
   }
 
-  /// Start listening for voice commands
   Future<void> startListening() async {
-    if (!_isInitialized || !_enabled) {
-      debugPrint('[Voice] Cannot start: initialized=$_isInitialized, enabled=$_enabled');
-      return;
-    }
-    
-    if (_isListening) {
-      debugPrint('[Voice] Already listening');
-      return;
-    }
+    if (!_isInitialized || !_enabled || _isListening) return;
 
     try {
       await _speech.listen(
         onResult: _onResult,
-        listenFor: const Duration(seconds: 30),
-        pauseFor: const Duration(seconds: 3),
+        listenFor: const Duration(seconds: 15), // Shorter for responsiveness
+        pauseFor: const Duration(seconds: 2),
         partialResults: true,
         cancelOnError: false,
         listenMode: stt.ListenMode.confirmation,
       );
       _isListening = true;
-      debugPrint('[Voice] Started listening');
       notifyListeners();
     } catch (e) {
       debugPrint('[Voice] Error starting: $e');
@@ -135,19 +126,16 @@ class VoiceCommandService extends ChangeNotifier {
     }
   }
 
-  /// Stop listening
   Future<void> stopListening() async {
     try {
       await _speech.stop();
       _isListening = false;
-      debugPrint('[Voice] Stopped listening');
       notifyListeners();
     } catch (e) {
       debugPrint('[Voice] Error stopping: $e');
     }
   }
 
-  /// Toggle listening state
   Future<void> toggleListening() async {
     if (_isListening) {
       await stopListening();
@@ -156,97 +144,146 @@ class VoiceCommandService extends ChangeNotifier {
     }
   }
 
-  /// Process speech recognition result
   void _onResult(SpeechRecognitionResult result) {
     _lastWords = result.recognizedWords;
     _confidence = result.confidence;
     
-    debugPrint('[Voice] Words: $_lastWords (confidence: ${(_confidence * 100).toStringAsFixed(1)}%)');
-    
-    if (result.finalResult) {
-      final command = _parseCommand(_lastWords);
-      _executeCommand(command, _lastWords);
+    if (result.finalResult && _lastWords.isNotEmpty) {
+      final parsed = _parseCommand(_lastWords);
+      _executeCommand(parsed.command, parsed.objectName, _lastWords);
     }
     
     notifyListeners();
   }
 
-  /// Parse spoken words into a command
-  VoiceCommand _parseCommand(String words) {
+  /// Parse natural language command
+  _ParsedCommand _parseCommand(String words) {
     final lower = words.toLowerCase().trim();
     
-    // What's ahead / What do you see
+    // === EMERGENCY (highest priority) ===
+    if (lower.contains("help me") || 
+        lower == "help" ||
+        lower.contains("emergency") ||
+        lower.contains("sos") ||
+        lower.contains("call for help") ||
+        lower.contains("i need help")) {
+      return _ParsedCommand(VoiceCommand.emergency);
+    }
+    
+    // === I'M OKAY (for fall detection response) ===
+    if (lower.contains("i'm okay") || 
+        lower.contains("i am okay") ||
+        lower.contains("i'm fine") ||
+        lower.contains("i am fine") ||
+        lower.contains("i'm alright") ||
+        lower.contains("yes") ||
+        lower.contains("no help")) {
+      return _ParsedCommand(VoiceCommand.imOkay);
+    }
+    
+    // === FIND OBJECT ===
+    // "Find the door", "Where is the chair", "Locate the table"
+    final findPatterns = [
+      RegExp(r'find (?:the |a )?(\w+)', caseSensitive: false),
+      RegExp(r'where is (?:the |a )?(\w+)', caseSensitive: false),
+      RegExp(r'locate (?:the |a )?(\w+)', caseSensitive: false),
+      RegExp(r'look for (?:the |a )?(\w+)', caseSensitive: false),
+    ];
+    for (final pattern in findPatterns) {
+      final match = pattern.firstMatch(lower);
+      if (match != null && match.group(1) != null) {
+        return _ParsedCommand(VoiceCommand.findObject, match.group(1));
+      }
+    }
+    
+    // === WHAT'S AHEAD ===
     if (lower.contains("what's ahead") || 
         lower.contains("what is ahead") ||
         lower.contains("what do you see") ||
+        lower.contains("what's in front") ||
+        lower.contains("what is in front") ||
         lower.contains("describe") ||
-        lower.contains("scan")) {
-      return VoiceCommand.whatsAhead;
+        lower.contains("scan") ||
+        lower.contains("look ahead")) {
+      return _ParsedCommand(VoiceCommand.whatsAhead);
     }
     
-    // Emergency
-    if (lower.contains("help") || 
-        lower.contains("emergency") ||
-        lower.contains("sos") ||
-        lower.contains("danger")) {
-      return VoiceCommand.emergency;
+    // === PATH CLEAR ===
+    if (lower.contains("is the path clear") ||
+        lower.contains("path clear") ||
+        lower.contains("is it safe") ||
+        lower.contains("can i go")) {
+      return _ParsedCommand(VoiceCommand.pathClear);
     }
     
-    // Stop
+    // === READ TEXT ===
+    if (lower.contains("read this") ||
+        lower.contains("read that") ||
+        lower.contains("what does it say") ||
+        lower.contains("read the text") ||
+        lower.contains("read the sign")) {
+      return _ParsedCommand(VoiceCommand.readText);
+    }
+    
+    // === STOP ===
     if (lower.contains("stop") || 
         lower.contains("pause") ||
         lower.contains("wait") ||
-        lower.contains("quiet")) {
-      return VoiceCommand.stop;
+        lower.contains("be quiet") ||
+        lower.contains("silence") ||
+        lower.contains("shut up")) { // Common expression
+      return _ParsedCommand(VoiceCommand.stop);
     }
     
-    // Start
+    // === START ===
     if (lower.contains("start") || 
         lower.contains("begin") ||
         lower.contains("go") ||
         lower.contains("resume") ||
-        lower.contains("continue")) {
-      return VoiceCommand.start;
+        lower.contains("continue") ||
+        lower.contains("guide me") ||
+        lower.contains("lead the way")) {
+      return _ParsedCommand(VoiceCommand.start);
     }
     
-    // Repeat
+    // === REPEAT ===
     if (lower.contains("repeat") || 
         lower.contains("again") ||
-        lower.contains("say that") ||
-        lower.contains("what was that")) {
-      return VoiceCommand.repeat;
+        lower.contains("say that again") ||
+        lower.contains("what was that") ||
+        lower.contains("pardon") ||
+        lower.contains("come again")) {
+      return _ParsedCommand(VoiceCommand.repeat);
     }
     
-    // Speed controls
-    if (lower.contains("faster") || lower.contains("speed up")) {
-      return VoiceCommand.faster;
+    // === SPEED ===
+    if (lower.contains("faster") || lower.contains("speed up") || lower.contains("quicker")) {
+      return _ParsedCommand(VoiceCommand.faster);
     }
     if (lower.contains("slower") || lower.contains("slow down")) {
-      return VoiceCommand.slower;
+      return _ParsedCommand(VoiceCommand.slower);
     }
     
-    // Volume controls
-    if (lower.contains("louder") || lower.contains("volume up")) {
-      return VoiceCommand.louder;
+    // === VOLUME ===
+    if (lower.contains("louder") || lower.contains("volume up") || lower.contains("speak up")) {
+      return _ParsedCommand(VoiceCommand.louder);
     }
     if (lower.contains("quieter") || lower.contains("volume down") || lower.contains("softer")) {
-      return VoiceCommand.quieter;
+      return _ParsedCommand(VoiceCommand.quieter);
     }
     
-    // Settings
+    // === SETTINGS ===
     if (lower.contains("settings") || lower.contains("options") || lower.contains("preferences")) {
-      return VoiceCommand.settings;
+      return _ParsedCommand(VoiceCommand.settings);
     }
     
-    return VoiceCommand.unknown;
+    return _ParsedCommand(VoiceCommand.unknown);
   }
 
-  /// Execute the recognized command
-  void _executeCommand(VoiceCommand command, String rawWords) {
+  void _executeCommand(VoiceCommand command, String? objectName, String rawWords) {
     _lastCommand = command.name;
-    debugPrint('[Voice] Executing command: $command');
+    debugPrint('[Voice] Command: $command, Object: $objectName');
     
-    // Call specific callback
     switch (command) {
       case VoiceCommand.whatsAhead:
         onWhatsAhead?.call();
@@ -278,29 +315,34 @@ class VoiceCommandService extends ChangeNotifier {
       case VoiceCommand.settings:
         onSettings?.call();
         break;
+      case VoiceCommand.findObject:
+        if (objectName != null) {
+          onFindObject?.call(objectName);
+        }
+        break;
+      case VoiceCommand.readText:
+        onReadText?.call();
+        break;
+      case VoiceCommand.pathClear:
+        onPathClear?.call();
+        break;
+      case VoiceCommand.imOkay:
+        onImOkay?.call();
+        break;
       case VoiceCommand.unknown:
-        debugPrint('[Voice] Unknown command: $rawWords');
+        onUnknownCommand?.call(rawWords);
         break;
     }
     
-    // Call generic callback
     onAnyCommand?.call(command, rawWords);
-    
     notifyListeners();
   }
 
-  /// Check if speech recognition is available
   Future<bool> checkAvailability() async {
     if (!_isInitialized) {
       return await initialize();
     }
     return _isInitialized;
-  }
-
-  /// Get list of available locales
-  Future<List<stt.LocaleName>> getLocales() async {
-    if (!_isInitialized) return [];
-    return await _speech.locales();
   }
 
   @override
@@ -309,4 +351,12 @@ class VoiceCommandService extends ChangeNotifier {
     _speech.cancel();
     super.dispose();
   }
+}
+
+/// Parsed command with optional object name
+class _ParsedCommand {
+  final VoiceCommand command;
+  final String? objectName;
+  
+  _ParsedCommand(this.command, [this.objectName]);
 }

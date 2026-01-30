@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 
@@ -5,10 +6,11 @@ import '../models/detection.dart';
 import 'settings_service.dart';
 
 /// Enhanced TTS service with:
-/// - Priority-based announcements (Feature 4)
-/// - Customizable voice speed (Feature 6)
-/// - Spatial audio hints (Feature 5)
-/// - Path clear notifications (Feature 7)
+/// - Calm, human-like speech
+/// - Short, actionable phrases
+/// - Emotional support
+/// - Distance in human terms (steps)
+/// - Confidence-aware announcements
 class TTSService extends ChangeNotifier {
   final FlutterTts _flutterTts = FlutterTts();
   SettingsService? _settings;
@@ -17,11 +19,22 @@ class TTSService extends ChangeNotifier {
   bool _isSpeaking = false;
   final List<_SpeechRequest> _queue = [];
   final Map<String, DateTime> _cooldowns = {};
+  String _lastAnnouncement = '';
   
   static const Duration cooldownDuration = Duration(seconds: 3);
 
+  // Emotional support phrases
+  static const List<String> _reassuringPhrases = [
+    "You're safe.",
+    "Take your time.",
+    "I'm here with you.",
+    "All clear for now.",
+    "You're doing great.",
+  ];
+
   bool get isInitialized => _isInitialized;
   bool get isSpeaking => _isSpeaking;
+  String get lastAnnouncement => _lastAnnouncement;
 
   /// Initialize TTS engine with settings
   Future<void> initialize({SettingsService? settings}) async {
@@ -29,9 +42,9 @@ class TTSService extends ChangeNotifier {
     
     try {
       await _flutterTts.setLanguage('en-US');
-      await _flutterTts.setSpeechRate(_settings?.speechRate ?? 0.5);
+      await _flutterTts.setSpeechRate(_settings?.speechRate ?? 0.45);
       await _flutterTts.setVolume(_settings?.speechVolume ?? 1.0);
-      await _flutterTts.setPitch(0.95);
+      await _flutterTts.setPitch(0.9); // Slightly lower for calmer voice
 
       _flutterTts.setStartHandler(() {
         _isSpeaking = true;
@@ -53,7 +66,7 @@ class TTSService extends ChangeNotifier {
 
       _isInitialized = true;
       notifyListeners();
-      debugPrint('TTS: Initialized');
+      debugPrint('TTS: Initialized with calm settings');
     } catch (e) {
       debugPrint('TTS: Init failed: $e');
     }
@@ -67,45 +80,91 @@ class TTSService extends ChangeNotifier {
     }
   }
 
-  /// Increase speech speed (Feature 11 voice command)
+  /// Convert meters to human-friendly steps
+  /// Average step is ~0.75 meters
+  String _metersToSteps(double meters) {
+    if (meters < 0.5) return 'very close';
+    if (meters < 1.0) return 'one step away';
+    if (meters < 1.5) return 'two steps away';
+    if (meters < 2.0) return 'three steps away';
+    if (meters < 3.0) return 'a few steps ahead';
+    if (meters < 5.0) return 'several steps ahead';
+    return 'in the distance';
+  }
+
+  /// Convert position to simple direction
+  String _positionToDirection(RelativePosition? pos) {
+    if (pos == null) return '';
+    return switch (pos) {
+      RelativePosition.left => 'to your left',
+      RelativePosition.center => 'straight ahead',
+      RelativePosition.right => 'to your right',
+    };
+  }
+
+  /// Build calm, short announcement for detection
+  String _buildCalmAnnouncement(Detection detection) {
+    final name = detection.className;
+    final distance = _metersToSteps(detection.distanceMeters);
+    final direction = _positionToDirection(detection.relativePosition);
+    
+    // Build short phrase: "[Object], [distance], [direction]"
+    if (direction.isNotEmpty && direction != 'straight ahead') {
+      return '$name, $distance, $direction';
+    }
+    return '$name, $distance';
+  }
+
+  /// Speak with confidence indicator
+  Future<void> speakWithConfidence(String message, double confidence) async {
+    String prefix = '';
+    if (confidence < 0.3) {
+      prefix = 'I think I see ';
+    } else if (confidence < 0.5) {
+      prefix = 'Possibly ';
+    }
+    await speak('$prefix$message');
+  }
+
+  // ==================== Speed/Volume Controls ====================
+
   Future<void> increaseSpeed() async {
     if (_settings != null) {
       final newRate = (_settings!.speechRate + 0.1).clamp(0.1, 1.0);
       await _settings!.setSpeechRate(newRate);
       await _flutterTts.setSpeechRate(newRate);
-      await speak('Speed increased', priority: SpeechPriority.high);
+      await speak('Faster', priority: SpeechPriority.high);
     }
   }
 
-  /// Decrease speech speed (Feature 11 voice command)
   Future<void> decreaseSpeed() async {
     if (_settings != null) {
       final newRate = (_settings!.speechRate - 0.1).clamp(0.1, 1.0);
       await _settings!.setSpeechRate(newRate);
       await _flutterTts.setSpeechRate(newRate);
-      await speak('Speed decreased', priority: SpeechPriority.high);
+      await speak('Slower', priority: SpeechPriority.high);
     }
   }
 
-  /// Increase speech volume (Feature 11 voice command)
   Future<void> increaseVolume() async {
     if (_settings != null) {
       final newVol = (_settings!.speechVolume + 0.2).clamp(0.2, 1.0);
       await _settings!.setSpeechVolume(newVol);
       await _flutterTts.setVolume(newVol);
-      await speak('Volume increased', priority: SpeechPriority.high);
+      await speak('Louder', priority: SpeechPriority.high);
     }
   }
 
-  /// Decrease speech volume (Feature 11 voice command)
   Future<void> decreaseVolume() async {
     if (_settings != null) {
       final newVol = (_settings!.speechVolume - 0.2).clamp(0.2, 1.0);
       await _settings!.setSpeechVolume(newVol);
       await _flutterTts.setVolume(newVol);
-      await speak('Volume decreased', priority: SpeechPriority.high);
+      await speak('Quieter', priority: SpeechPriority.high);
     }
   }
+
+  // ==================== Core Speech Methods ====================
 
   /// Speak with priority and spatial audio hint
   Future<void> speak(
@@ -126,11 +185,10 @@ class TTSService extends ChangeNotifier {
       _cooldowns[cooldownKey] = DateTime.now();
     }
 
-    // Add spatial hint to message
-    final spatialMessage = _addSpatialHint(message, position);
+    _lastAnnouncement = message;
 
     final request = _SpeechRequest(
-      message: spatialMessage,
+      message: message,
       priority: priority,
       timestamp: DateTime.now(),
     );
@@ -138,7 +196,6 @@ class TTSService extends ChangeNotifier {
     if (priority == SpeechPriority.interrupt) {
       await _speakImmediately(request);
     } else if (priority == SpeechPriority.high && _isSpeaking) {
-      // For high priority, add to front of queue
       _queue.insert(0, request);
     } else {
       _queue.add(request);
@@ -149,21 +206,6 @@ class TTSService extends ChangeNotifier {
     }
   }
 
-  /// Add spatial audio hint to message
-  String _addSpatialHint(String message, RelativePosition? position) {
-    if (position == null) return message;
-    
-    final hint = position.description;
-    // Check if message already contains position info
-    if (message.toLowerCase().contains('left') || 
-        message.toLowerCase().contains('right') ||
-        message.toLowerCase().contains('ahead')) {
-      return message;
-    }
-    return '$message, $hint';
-  }
-
-  /// Speak immediately, interrupting current speech
   Future<void> speakImmediately(String message) async {
     await speak(message, priority: SpeechPriority.interrupt);
   }
@@ -171,17 +213,20 @@ class TTSService extends ChangeNotifier {
   Future<void> _speakImmediately(_SpeechRequest request) async {
     await stop();
     _queue.clear();
+    _lastAnnouncement = request.message;
     await _flutterTts.speak(request.message);
   }
 
   void _processQueue() {
     if (_queue.isEmpty || _isSpeaking) return;
-
     final next = _queue.removeAt(0);
+    _lastAnnouncement = next.message;
     _flutterTts.speak(next.message);
   }
 
-  /// Speak detection with priority and position
+  // ==================== Detection Announcements ====================
+
+  /// Speak detection in calm, short format
   Future<void> speakDetection(Detection detection) async {
     final priority = switch (detection.dangerLevel) {
       DangerLevel.critical => SpeechPriority.interrupt,
@@ -190,14 +235,13 @@ class TTSService extends ChangeNotifier {
       _ => SpeechPriority.low,
     };
 
-    final distance = detection.distanceDescription;
-    final message = '${detection.className} $distance';
+    // Use the new calm announcement format
+    final message = _buildCalmAnnouncement(detection);
 
     await speak(
       message,
       priority: priority,
       cooldownKey: '${detection.className}_${detection.relativePosition}',
-      position: detection.relativePosition,
     );
   }
 
@@ -216,25 +260,72 @@ class TTSService extends ChangeNotifier {
       risk.recommendation,
       priority: priority,
       cooldownKey: risk.alertKey,
-      position: risk.detection.relativePosition,
     );
   }
 
-  /// Announce path is clear (Feature 7)
+  // ==================== Guidance Announcements ====================
+
+  /// Path is clear - calm confirmation
   Future<void> speakPathClear() async {
     await speak(
-      'Path is clear',
+      'Path ahead is clear',
       priority: SpeechPriority.low,
       cooldownKey: 'path_clear',
     );
   }
 
-  /// Announce emergency
-  Future<void> speakEmergency(String message) async {
-    await speakImmediately('Emergency: $message');
+  /// Announce obstacle with distance and direction
+  Future<void> speakObstacle(String objectName, double meters, RelativePosition? pos) async {
+    final distance = _metersToSteps(meters);
+    final direction = _positionToDirection(pos);
+    
+    String message;
+    if (direction.isNotEmpty) {
+      message = 'Obstacle ahead, $distance, $direction';
+    } else {
+      message = 'Obstacle ahead, $distance';
+    }
+    
+    await speak(message, priority: SpeechPriority.high);
   }
 
-  /// Stop all speech
+  /// Warn about hazard
+  Future<void> speakHazardWarning(String hazard, double meters) async {
+    final distance = _metersToSteps(meters);
+    await speakImmediately('Caution, $hazard, $distance');
+  }
+
+  // ==================== Emotional Support ====================
+
+  /// Speak a reassuring phrase
+  Future<void> speakReassurance() async {
+    final phrase = _reassuringPhrases[Random().nextInt(_reassuringPhrases.length)];
+    await speak(phrase, priority: SpeechPriority.low, cooldownKey: 'reassure');
+  }
+
+  /// Ask if user is okay (for fall detection)
+  Future<void> askAreYouOkay() async {
+    await speakImmediately('Are you okay? Say help if you need assistance.');
+  }
+
+  /// Confirm user is safe
+  Future<void> confirmSafe() async {
+    await speak("You're safe.", priority: SpeechPriority.normal);
+  }
+
+  /// Encourage user to take their time
+  Future<void> encouragePatience() async {
+    await speak('Take your time.', priority: SpeechPriority.low);
+  }
+
+  // ==================== Emergency ====================
+
+  Future<void> speakEmergency(String message) async {
+    await speakImmediately(message);
+  }
+
+  // ==================== Control Methods ====================
+
   Future<void> stop() async {
     await _flutterTts.stop();
     _isSpeaking = false;
@@ -242,9 +333,15 @@ class TTSService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Clear cooldowns
   void clearCooldowns() {
     _cooldowns.clear();
+  }
+
+  /// Repeat last announcement
+  Future<void> repeatLast() async {
+    if (_lastAnnouncement.isNotEmpty) {
+      await speakImmediately(_lastAnnouncement);
+    }
   }
 
   @override
@@ -270,7 +367,7 @@ class _SpeechRequest {
 /// Speech priority levels
 enum SpeechPriority {
   interrupt, // Stop current speech immediately
-  high,      // Next in queue, may interrupt low priority
+  high,      // Next in queue
   normal,    // Standard priority
   low,       // Only if queue empty
 }

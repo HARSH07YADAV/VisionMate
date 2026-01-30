@@ -44,6 +44,9 @@ dependencies:
   
   # Shake detection for hands-free activation
   sensors_plus: ^4.0.2
+  
+  # OCR text recognition for reading signs, labels
+  google_mlkit_text_recognition: ^0.13.0
 
 dev_dependencies:
   flutter_test:
