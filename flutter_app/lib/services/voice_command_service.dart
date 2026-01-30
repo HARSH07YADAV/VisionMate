@@ -6,21 +6,22 @@ import 'package:speech_to_text/speech_recognition_error.dart';
 
 /// Voice command types - extended for natural language
 enum VoiceCommand {
-  whatsAhead,     // "What's ahead", "What do you see", "What's in front"
-  start,          // "Start", "Begin", "Go", "Guide me"
-  stop,           // "Stop", "Pause", "Wait", "Be quiet"
-  emergency,      // "Help", "Help me", "Emergency", "SOS"
-  repeat,         // "Repeat", "Again", "Say that again"
-  faster,         // "Faster", "Speed up"
-  slower,         // "Slower", "Slow down"
-  louder,         // "Louder", "Volume up"
-  quieter,        // "Quieter", "Volume down"
-  settings,       // "Settings", "Options"
-  findObject,     // "Find the door", "Where is the chair"
-  readText,       // "Read this", "What does it say"
-  pathClear,      // "Is the path clear"
-  imOkay,         // "I'm okay", "I'm fine" (for fall response)
-  unknown,        // Unrecognized command
+  whatsAhead,       // "What's ahead", "What do you see"
+  start,            // "Start", "Begin", "Go", "Guide me"
+  stop,             // "Stop", "Pause", "Wait"
+  emergency,        // "Help", "Help me", "Emergency", "SOS"
+  repeat,           // "Repeat", "Again"
+  faster,           // "Faster", "Speed up"
+  slower,           // "Slower", "Slow down"
+  louder,           // "Louder", "Volume up"
+  quieter,          // "Quieter", "Volume down"
+  settings,         // "Settings", "Options"
+  findObject,       // "Find the door", "Where is the chair"
+  readText,         // "Read this", "What does it say"
+  identifyCurrency, // "What note is this", "Identify currency"
+  pathClear,        // "Is the path clear"
+  imOkay,           // "I'm okay", "I'm fine" (for fall)
+  unknown,          // Unrecognized
 }
 
 /// Voice command service with natural language understanding
@@ -47,6 +48,7 @@ class VoiceCommandService extends ChangeNotifier {
   Function? onSettings;
   Function(String)? onFindObject;  // Pass the object name
   Function? onReadText;
+  Function? onIdentifyCurrency;
   Function? onPathClear;
   Function? onImOkay;
   Function(VoiceCommand, String)? onAnyCommand;
@@ -225,6 +227,17 @@ class VoiceCommandService extends ChangeNotifier {
       return _ParsedCommand(VoiceCommand.readText);
     }
     
+    // === IDENTIFY CURRENCY ===
+    if (lower.contains("what note") ||
+        lower.contains("identify money") ||
+        lower.contains("identify currency") ||
+        lower.contains("what rupee") ||
+        lower.contains("currency") ||
+        lower.contains("how much money") ||
+        lower.contains("what denomination")) {
+      return _ParsedCommand(VoiceCommand.identifyCurrency);
+    }
+    
     // === STOP ===
     if (lower.contains("stop") || 
         lower.contains("pause") ||
@@ -322,6 +335,9 @@ class VoiceCommandService extends ChangeNotifier {
         break;
       case VoiceCommand.readText:
         onReadText?.call();
+        break;
+      case VoiceCommand.identifyCurrency:
+        onIdentifyCurrency?.call();
         break;
       case VoiceCommand.pathClear:
         onPathClear?.call();
