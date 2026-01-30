@@ -18,6 +18,8 @@ import 'services/accessibility_activation_service.dart';
 import 'services/ocr_service.dart';
 import 'services/context_service.dart';
 import 'services/currency_service.dart';
+import 'services/learning_service.dart';
+import 'services/feedback_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/history_screen.dart';
@@ -55,6 +57,8 @@ class BlindAssistApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => OcrService()),
         ChangeNotifierProvider(create: (_) => ContextService()),
         ChangeNotifierProvider(create: (_) => CurrencyService()),
+        ChangeNotifierProvider(create: (_) => LearningService()),
+        ChangeNotifierProvider(create: (_) => FeedbackService()),
       ],
       child: Consumer<SettingsService>(
         builder: (context, settings, _) {

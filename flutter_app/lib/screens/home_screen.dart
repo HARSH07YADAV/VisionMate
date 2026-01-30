@@ -18,6 +18,8 @@ import '../services/accessibility_activation_service.dart';
 import '../services/ocr_service.dart';
 import '../services/context_service.dart';
 import '../services/currency_service.dart';
+import '../services/learning_service.dart';
+import '../services/feedback_service.dart';
 import '../core/risk_calculator.dart';
 import '../widgets/detection_overlay.dart';
 
@@ -175,10 +177,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // New: Identify currency command
     voiceService.onIdentifyCurrency = _identifyCurrency;
     
+    // New: Feedback for learning
+    voiceService.onFeedbackPositive = () => _provideFeedback(true);
+    voiceService.onFeedbackNegative = () => _provideFeedback(false);
+    
     // New: Unknown command feedback
     voiceService.onUnknownCommand = (String words) {
       tts.speak("I didn't understand. Try 'what's ahead' or 'help'.");
     };
+    
+    // Initialize learning services
+    final learningService = context.read<LearningService>();
+    final feedbackService = context.read<FeedbackService>();
+    learningService.initialize();
+    feedbackService.initialize();
+    learningService.startSession();
+    feedbackService.startSession();
     
     // Enable if setting is on
     final settings = context.read<SettingsService>();
@@ -283,6 +297,40 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       debugPrint('[Currency] Error: $e');
       tts.speakImmediately('Could not identify note. Please try again.');
     }
+  }
+  
+  /// Provide feedback to learning system
+  void _provideFeedback(bool isPositive) {
+    final tts = context.read<TTSService>();
+    final learningService = context.read<LearningService>();
+    final feedbackService = context.read<FeedbackService>();
+    
+    // Get last announced object type if any
+    String? lastObjectType;
+    if (_detections.isNotEmpty) {
+      lastObjectType = _detections.first.className;
+    }
+    
+    // Update learning service
+    learningService.provideFeedback(
+      isPositive ? FeedbackType.positive : FeedbackType.negative,
+      objectType: lastObjectType,
+    );
+    
+    // Update feedback service
+    feedbackService.recordImplicitFeedback(
+      isPositive ? ImplicitFeedback.positive : ImplicitFeedback.tooMuch,
+      context: lastObjectType,
+    );
+    
+    // Acknowledge
+    if (isPositive) {
+      tts.speak('Thank you for the feedback. I\'ll remember that.');
+    } else {
+      tts.speak('Got it. I\'ll announce less often.');
+    }
+    
+    debugPrint('[Learning] Feedback: positive=$isPositive, object=$lastObjectType');
   }
 
   void _announceCurrentDetections() {

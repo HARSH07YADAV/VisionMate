@@ -21,6 +21,8 @@ enum VoiceCommand {
   identifyCurrency, // "What note is this", "Identify currency"
   pathClear,        // "Is the path clear"
   imOkay,           // "I'm okay", "I'm fine" (for fall)
+  feedbackPositive, // "Thanks", "Helpful", "Good"
+  feedbackNegative, // "Too much", "Enough", "Not helpful"
   unknown,          // Unrecognized
 }
 
@@ -51,6 +53,8 @@ class VoiceCommandService extends ChangeNotifier {
   Function? onIdentifyCurrency;
   Function? onPathClear;
   Function? onImOkay;
+  Function? onFeedbackPositive;  // User says "thanks", "helpful"
+  Function? onFeedbackNegative;  // User says "too much", "enough"
   Function(VoiceCommand, String)? onAnyCommand;
   Function(String)? onUnknownCommand;  // For feedback on unrecognized
 
@@ -290,6 +294,25 @@ class VoiceCommandService extends ChangeNotifier {
       return _ParsedCommand(VoiceCommand.settings);
     }
     
+    // === FEEDBACK POSITIVE ===
+    if (lower.contains("thanks") ||
+        lower.contains("thank you") ||
+        lower.contains("helpful") ||
+        lower.contains("good job") ||
+        lower.contains("great") ||
+        lower.contains("perfect")) {
+      return _ParsedCommand(VoiceCommand.feedbackPositive);
+    }
+    
+    // === FEEDBACK NEGATIVE ===
+    if (lower.contains("too much") ||
+        lower.contains("enough") ||
+        lower.contains("not helpful") ||
+        lower.contains("annoying") ||
+        lower.contains("shut up")) {
+      return _ParsedCommand(VoiceCommand.feedbackNegative);
+    }
+    
     return _ParsedCommand(VoiceCommand.unknown);
   }
 
@@ -344,6 +367,12 @@ class VoiceCommandService extends ChangeNotifier {
         break;
       case VoiceCommand.imOkay:
         onImOkay?.call();
+        break;
+      case VoiceCommand.feedbackPositive:
+        onFeedbackPositive?.call();
+        break;
+      case VoiceCommand.feedbackNegative:
+        onFeedbackNegative?.call();
         break;
       case VoiceCommand.unknown:
         onUnknownCommand?.call(rawWords);
