@@ -102,7 +102,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     // Calm, reassuring startup message
     if (onnxService.isInitialized) {
-      ttsService.speak('BlindAssist ready. Shake phone, press volume up, or double tap to speak. I\'m here with you.');
+      ttsService.speak('VisionMate ready. Shake phone, press volume up, or double tap to speak. I\'m here with you.');
     } else {
       ttsService.speak('Warning: Detection model failed to load.');
     }

@@ -1,6 +1,6 @@
 {
-    "name": "blind_assist",
-    "short_name": "blind_assist",
+    "name": "vision_mate",
+    "short_name": "vision_mate",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

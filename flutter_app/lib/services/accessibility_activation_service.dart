@@ -41,7 +41,7 @@ class AccessibilityActivationService extends ChangeNotifier {
   static const double _stillnessThreshold = 2.0; // Post-fall stillness
   
   // Volume button detection
-  static const _volumeChannel = MethodChannel('com.example.blind_assist/volume');
+  static const _volumeChannel = MethodChannel('com.example.vision_mate/volume');
   bool _volumeButtonEnabled = true;
   
   // Always listening

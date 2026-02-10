@@ -20,7 +20,7 @@ class HistoryService extends ChangeNotifier {
     
     try {
       final databasesPath = await getDatabasesPath();
-      final path = join(databasesPath, 'blind_assist.db');
+      final path = join(databasesPath, 'vision_mate.db');
       
       _db = await openDatabase(
         path,

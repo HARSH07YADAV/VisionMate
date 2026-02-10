@@ -1,5 +1,5 @@
-name: blind_assist
-description: AI-Powered Indoor Navigation & Obstacle Avoidance App for Visually Impaired
+name: vision_mate
+description: VisionMate – Smart Navigation for the Blind
 publish_to: 'none'
 
 environment:

@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "blind_assist" "\0"
+            VALUE "FileDescription", "vision_mate" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "blind_assist" "\0"
+            VALUE "InternalName", "vision_mate" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "blind_assist.exe" "\0"
-            VALUE "ProductName", "blind_assist" "\0"
+            VALUE "OriginalFilename", "vision_mate.exe" "\0"
+            VALUE "ProductName", "vision_mate" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

@@ -23,7 +23,7 @@
     <uses-feature android:name="android.hardware.location.gps" android:required="false" />
 
     <application
-        android:label="BlindAssist"
+        android:label="VisionMate"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         

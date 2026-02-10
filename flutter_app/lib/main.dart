@@ -32,11 +32,11 @@ void main() async {
     DeviceOrientation.portraitUp,
   ]);
   
-  runApp(const BlindAssistApp());
+  runApp(const VisionMateApp());
 }
 
-class BlindAssistApp extends StatelessWidget {
-  const BlindAssistApp({super.key});
+class VisionMateApp extends StatelessWidget {
+  const VisionMateApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -63,7 +63,7 @@ class BlindAssistApp extends StatelessWidget {
       child: Consumer<SettingsService>(
         builder: (context, settings, _) {
           return MaterialApp(
-            title: 'BlindAssist',
+            title: 'VisionMate',
             debugShowCheckedModeBanner: false,
             theme: settings.highContrast 
               ? _highContrastTheme()
@@ -189,7 +189,7 @@ class _PermissionWrapperState extends State<PermissionWrapper> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'BlindAssist needs camera access to detect obstacles and help you navigate safely.',
+                  'VisionMate needs camera access to detect obstacles and help you navigate safely.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyMedium,
                 ),

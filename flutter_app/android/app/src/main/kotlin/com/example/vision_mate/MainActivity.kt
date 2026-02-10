@@ -1,4 +1,4 @@
-package com.example.blind_assist
+package com.example.vision_mate
 
 import android.view.KeyEvent
 import io.flutter.embedding.android.FlutterActivity
@@ -6,7 +6,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    private val CHANNEL = "com.example.blind_assist/volume"
+    private val CHANNEL = "com.example.vision_mate/volume"
     private var methodChannel: MethodChannel? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
