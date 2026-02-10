@@ -7,6 +7,140 @@ import 'package:camera/camera.dart';
 
 import '../models/detection.dart';
 
+/// Data class for passing preprocessing work to compute isolate
+class _PreprocessRequest {
+  final Uint8List yPlane;
+  final Uint8List uPlane;
+  final Uint8List vPlane;
+  final int yStride;
+  final int uvStride;
+  final int uvPixel;
+  final int srcW;
+  final int srcH;
+  final int inputSize;
+  final int bufferLength;
+
+  _PreprocessRequest({
+    required this.yPlane,
+    required this.uPlane,
+    required this.vPlane,
+    required this.yStride,
+    required this.uvStride,
+    required this.uvPixel,
+    required this.srcW,
+    required this.srcH,
+    required this.inputSize,
+    required this.bufferLength,
+  });
+}
+
+/// Result from compute isolate preprocessing
+class _PreprocessResult {
+  final Float32List buffer;
+  final double scale;
+  final int padX;
+  final int padY;
+  final int newW;
+  final int newH;
+
+  _PreprocessResult({
+    required this.buffer,
+    required this.scale,
+    required this.padX,
+    required this.padY,
+    required this.newW,
+    required this.newH,
+  });
+}
+
+/// Top-level function for compute() isolate – preprocesses camera frame
+_PreprocessResult _preprocessInIsolate(_PreprocessRequest req) {
+  final inputSize = req.inputSize;
+  final srcW = req.srcW;
+  final srcH = req.srcH;
+
+  final scale = math.min(inputSize / srcW, inputSize / srcH);
+  final newW = (srcW * scale).round();
+  final newH = (srcH * scale).round();
+  final padX = (inputSize - newW) ~/ 2;
+  final padY = (inputSize - newH) ~/ 2;
+
+  final buffer = Float32List(req.bufferLength);
+  // Fill with gray (0.5)
+  for (int i = 0; i < buffer.length; i++) {
+    buffer[i] = 0.5;
+  }
+
+  final pixelCount = inputSize * inputSize;
+  final y = req.yPlane;
+  final u = req.uPlane;
+  final v = req.vPlane;
+  final yStride = req.yStride;
+  final uvStride = req.uvStride;
+  final uvPixel = req.uvPixel;
+
+  // Stride-based sampling: process every 2nd pixel for speed on large frames
+  final step = (newW > 320 || newH > 320) ? 2 : 1;
+
+  for (int outY = 0; outY < newH; outY += step) {
+    final srcYC = (outY / scale).toInt().clamp(0, srcH - 1);
+    final destY = outY + padY;
+
+    for (int outX = 0; outX < newW; outX += step) {
+      final srcXC = (outX / scale).toInt().clamp(0, srcW - 1);
+      final destX = outX + padX;
+
+      final yIdx = srcYC * yStride + srcXC;
+      final yVal = yIdx < y.length ? y[yIdx] : 128;
+
+      final uvIdx = (srcYC ~/ 2) * uvStride + (srcXC ~/ 2) * uvPixel;
+      final uVal = uvIdx < u.length ? u[uvIdx] : 128;
+      final vVal = uvIdx < v.length ? v[uvIdx] : 128;
+
+      final r = (yVal + 1.402 * (vVal - 128)).clamp(0, 255) / 255.0;
+      final g = (yVal - 0.344 * (uVal - 128) - 0.714 * (vVal - 128)).clamp(0, 255) / 255.0;
+      final b = (yVal + 1.772 * (uVal - 128)).clamp(0, 255) / 255.0;
+
+      final idx = destY * inputSize + destX;
+      if (idx < pixelCount) {
+        buffer[idx] = r;
+        buffer[pixelCount + idx] = g;
+        buffer[2 * pixelCount + idx] = b;
+      }
+
+      // Fill skipped pixels with same value (fast interpolation)
+      if (step == 2 && outX + 1 < newW && destX + 1 < inputSize) {
+        final idx2 = destY * inputSize + destX + 1;
+        if (idx2 < pixelCount) {
+          buffer[idx2] = r;
+          buffer[pixelCount + idx2] = g;
+          buffer[2 * pixelCount + idx2] = b;
+        }
+      }
+    }
+
+    // Fill skipped rows
+    if (step == 2 && outY + 1 < newH) {
+      final srcRow = destY * inputSize + padX;
+      final dstRow = (destY + 1) * inputSize + padX;
+      for (int x = 0; x < newW && (dstRow + x) < pixelCount; x++) {
+        buffer[dstRow + x] = buffer[srcRow + x];
+        buffer[pixelCount + dstRow + x] = buffer[pixelCount + srcRow + x];
+        buffer[2 * pixelCount + dstRow + x] = buffer[2 * pixelCount + srcRow + x];
+      }
+    }
+  }
+
+  return _PreprocessResult(
+    buffer: buffer,
+    scale: scale,
+    padX: padX,
+    padY: padY,
+    newW: newW,
+    newH: newH,
+  );
+}
+
 /// COMPLETE ONNX Service with ALL 20 improvements:
 /// 
 /// Features:
@@ -32,9 +166,17 @@ class OnnxService extends ChangeNotifier {
   // Note: Multi-scale disabled - YOLOv8n requires fixed 640x640 input
   bool _useMultiScale = false;
   
-  // Throttle: 1.5 seconds for better accuracy
+  // Throttle: 200ms for ~5 FPS real-time detection
   int _lastInferenceTime = 0;
-  int _throttleMs = 1500;
+  int _throttleMs = 200;
+  
+  // Performance metrics
+  final List<int> _recentInferenceTimes = [];
+  static const int _metricsWindowSize = 20;
+  int get avgInferenceMs {
+    if (_recentInferenceTimes.isEmpty) return 0;
+    return _recentInferenceTimes.reduce((a, b) => a + b) ~/ _recentInferenceTimes.length;
+  }
   
   int _lastInferenceMs = 0;
   int _lastDetectionCount = 0;
@@ -92,8 +234,8 @@ class OnnxService extends ChangeNotifier {
       debugPrint('[ONNX] Model: ${data.lengthInBytes} bytes');
 
       _sessionOptions = OrtSessionOptions()
-        ..setInterOpNumThreads(1)
-        ..setIntraOpNumThreads(2);
+        ..setInterOpNumThreads(2)
+        ..setIntraOpNumThreads(4);  // Use more threads for faster inference
 
       _session = OrtSession.fromBuffer(data, _sessionOptions!);
       
@@ -124,7 +266,7 @@ class OnnxService extends ChangeNotifier {
   /// Set multi-scale detection (Feature 2)
   void setMultiScale(bool enabled) {
     _useMultiScale = enabled;
-    _throttleMs = enabled ? 2000 : 1500; // Slower if multi-scale
+    _throttleMs = enabled ? 400 : 200; // Slightly slower if multi-scale
     notifyListeners();
   }
 
@@ -162,7 +304,14 @@ class OnnxService extends ChangeNotifier {
       sw.stop();
       _lastInferenceMs = sw.elapsedMilliseconds;
       _lastDetectionCount = allDetections.length;
-      debugPrint('[ONNX] ${_lastInferenceMs}ms, ${allDetections.length} objects');
+      
+      // Track performance metrics
+      _recentInferenceTimes.add(_lastInferenceMs);
+      if (_recentInferenceTimes.length > _metricsWindowSize) {
+        _recentInferenceTimes.removeAt(0);
+      }
+      
+      debugPrint('[ONNX] ${_lastInferenceMs}ms (avg: ${avgInferenceMs}ms), ${allDetections.length} objects');
 
       return allDetections;
     } catch (e) {
@@ -179,7 +328,31 @@ class OnnxService extends ChangeNotifier {
     List<OrtValue?>? outputs;
 
     try {
-      final preprocessInfo = _preprocessWithLetterbox(image, inputSize, buffer);
+      // Offload preprocessing to compute isolate to avoid UI jank
+      final request = _PreprocessRequest(
+        yPlane: Uint8List.fromList(image.planes[0].bytes),
+        uPlane: Uint8List.fromList(image.planes[1].bytes),
+        vPlane: Uint8List.fromList(image.planes[2].bytes),
+        yStride: image.planes[0].bytesPerRow,
+        uvStride: image.planes[1].bytesPerRow,
+        uvPixel: image.planes[1].bytesPerPixel ?? 1,
+        srcW: image.width,
+        srcH: image.height,
+        inputSize: inputSize,
+        bufferLength: buffer.length,
+      );
+
+      final result = await compute(_preprocessInIsolate, request);
+      
+      // Copy result buffer for tensor creation
+      buffer.setAll(0, result.buffer);
+      final preprocessInfo = _LetterboxInfo(
+        scale: result.scale,
+        padX: result.padX,
+        padY: result.padY,
+        newW: result.newW,
+        newH: result.newH,
+      );
 
       inputTensor = OrtValueTensor.createTensorWithDataList(
         buffer,
@@ -271,61 +444,8 @@ class OnnxService extends ChangeNotifier {
     return null;
   }
 
-  _LetterboxInfo _preprocessWithLetterbox(CameraImage img, int inputSize, Float32List buffer) {
-    final srcW = img.width;
-    final srcH = img.height;
-    
-    final scale = math.min(inputSize / srcW, inputSize / srcH);
-    final newW = (srcW * scale).round();
-    final newH = (srcH * scale).round();
-    
-    final padX = (inputSize - newW) ~/ 2;
-    final padY = (inputSize - newH) ~/ 2;
-    
-    final y = img.planes[0].bytes;
-    final u = img.planes[1].bytes;
-    final v = img.planes[2].bytes;
-    
-    final yStride = img.planes[0].bytesPerRow;
-    final uvStride = img.planes[1].bytesPerRow;
-    final uvPixel = img.planes[1].bytesPerPixel ?? 1;
-    
-    final pixelCount = inputSize * inputSize;
-    
-    // Fill with gray padding
-    for (int i = 0; i < buffer.length; i++) {
-      buffer[i] = 0.5;
-    }
 
-    // Fill the actual image area
-    for (int outY = 0; outY < newH; outY++) {
-      final srcYC = ((outY / scale)).toInt().clamp(0, srcH - 1);
-      final destY = outY + padY;
-      
-      for (int outX = 0; outX < newW; outX++) {
-        final srcXC = ((outX / scale)).toInt().clamp(0, srcW - 1);
-        final destX = outX + padX;
-        
-        final yIdx = srcYC * yStride + srcXC;
-        final yVal = y[yIdx];
-        
-        final uvIdx = (srcYC ~/ 2) * uvStride + (srcXC ~/ 2) * uvPixel;
-        final uVal = u[uvIdx];
-        final vVal = v[uvIdx];
-        
-        final r = (yVal + 1.402 * (vVal - 128)).clamp(0, 255) / 255.0;
-        final g = (yVal - 0.344 * (uVal - 128) - 0.714 * (vVal - 128)).clamp(0, 255) / 255.0;
-        final b = (yVal + 1.772 * (uVal - 128)).clamp(0, 255) / 255.0;
-        
-        final idx = destY * inputSize + destX;
-        buffer[idx] = r;
-        buffer[pixelCount + idx] = g;
-        buffer[2 * pixelCount + idx] = b;
-      }
-    }
-    
-    return _LetterboxInfo(scale: scale, padX: padX, padY: padY, newW: newW, newH: newH);
-  }
+
 
   List<Detection> _decode(List<List<double>> output, int imgW, int imgH, _LetterboxInfo info, int inputSize) {
     final dets = <Detection>[];
@@ -399,12 +519,17 @@ class OnnxService extends ChangeNotifier {
     if (dets.length < 2) return dets;
     dets.sort((a, b) => b.confidence.compareTo(a.confidence));
     
+    // Cap detections to top 50 for performance
+    if (dets.length > 50) dets = dets.sublist(0, 50);
+    
     final keep = <Detection>[];
     final skip = List<bool>.filled(dets.length, false);
     
     for (int i = 0; i < dets.length; i++) {
       if (skip[i]) continue;
       keep.add(dets[i]);
+      // Early exit: keep at most 10 detections to bound output
+      if (keep.length >= 10) break;
       for (int j = i + 1; j < dets.length; j++) {
         if (skip[j]) continue;
         if (dets[i].className == dets[j].className) {

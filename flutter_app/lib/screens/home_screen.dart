@@ -65,28 +65,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final ttsService = context.read<TTSService>();
     final hapticService = context.read<HapticService>();
     final settingsService = context.read<SettingsService>();
-    final historyService = context.read<HistoryService>();
-    final emergencyService = context.read<EmergencyService>();
-    final voiceService = context.read<VoiceCommandService>();
 
-    // Initialize all services
+    // === PHASE 1: Critical services (camera + detection ready ASAP) ===
     await settingsService.initialize();
-    await cameraService.initialize();
-    await onnxService.initialize();
-    await ttsService.initialize(settings: settingsService);
-    await hapticService.initialize();
-    await historyService.initialize();
-    await emergencyService.initialize();
-    await voiceService.initialize();
-
-    // Set up voice commands
-    _setupVoiceCommands(voiceService);
     
-    // Set up hands-free activation (shake, volume button, etc.)
-    _setupAccessibilityActivation();
-
-    // Set emergency contact from settings
-    emergencyService.setEmergencyContact(settingsService.emergencyContact);
+    // Initialize camera and ONNX model in parallel for faster startup
+    await Future.wait([
+      cameraService.initialize(),
+      onnxService.initialize(),
+      ttsService.initialize(settings: settingsService),
+      hapticService.initialize(),
+    ]);
 
     // Apply haptic setting
     hapticService.setEnabled(settingsService.vibrationEnabled);
@@ -106,6 +95,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } else {
       ttsService.speak('Warning: Detection model failed to load.');
     }
+
+    // === PHASE 2: Non-critical services (load in background, don't block UI) ===
+    _initializeNonCriticalServices();
+  }
+
+  /// Initialize non-critical services without blocking the main UI
+  Future<void> _initializeNonCriticalServices() async {
+    final historyService = context.read<HistoryService>();
+    final emergencyService = context.read<EmergencyService>();
+    final voiceService = context.read<VoiceCommandService>();
+    final settingsService = context.read<SettingsService>();
+
+    // Initialize all non-critical services in parallel
+    await Future.wait([
+      historyService.initialize(),
+      emergencyService.initialize(),
+      voiceService.initialize(),
+    ]);
+
+    // Set up voice commands
+    _setupVoiceCommands(voiceService);
+    
+    // Set up hands-free activation (shake, volume button, etc.)
+    _setupAccessibilityActivation();
+
+    // Set emergency contact from settings
+    emergencyService.setEmergencyContact(settingsService.emergencyContact);
+    
+    debugPrint('[Startup] Non-critical services initialized');
   }
 
   /// Set up hands-free voice activation for blind users
@@ -447,6 +465,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final hapticService = context.read<HapticService>();
     final historyService = context.read<HistoryService>();
     final trackingService = context.read<TrackingService>();
+    final cameraService = context.read<CameraService>();
     final settings = context.read<SettingsService>();
 
     try {
@@ -460,6 +479,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
       // Run detection
       var detections = await onnxService.detectObjects(image);
+
+      // Notify camera service for battery optimization
+      cameraService.notifyDetectionResult(detections.length);
 
       // Sort by navigation mode priority (Feature 18)
       // Priority objects come first, but ALL objects are kept
@@ -478,7 +500,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       setState(() {
         _detections = detections;
         _risks = risks;
-        _statusMessage = 'Detecting: ${detections.length} objects';
+        _statusMessage = 'Detecting: ${detections.length} objects | ${onnxService.lastInferenceMs}ms | FPS: $_fps';
       });
 
       if (detections.isNotEmpty) {
