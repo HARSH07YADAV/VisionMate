@@ -24,8 +24,8 @@ class CameraService extends ChangeNotifier {
   
   // Frame throttling - adaptive FPS
   DateTime _lastFrameTime = DateTime.now();
-  int _targetFps = 5;
-  int _baseFps = 5;  // Base FPS before adaptive adjustment
+  int _targetFps = 60;
+  int _baseFps = 60;  // Base FPS before adaptive adjustment
   int get _frameIntervalMs => 1000 ~/ _targetFps;
   
   // Processing lock
@@ -139,7 +139,7 @@ class CameraService extends ChangeNotifier {
     _resolution = enabled ? ResolutionPreset.medium : ResolutionPreset.low;
     
     // Adjust base FPS based on resolution
-    _baseFps = enabled ? 3 : 5;
+    _baseFps = enabled ? 30 : 60;
     _targetFps = _baseFps;
     
     await _initController();
@@ -207,7 +207,7 @@ class CameraService extends ChangeNotifier {
     switch (_motionState) {
       case MotionState.walking:
         // Walking: need fast detection
-        _targetFps = _isHighResolution ? 4 : 8;
+        _targetFps = _isHighResolution ? 30 : 60;
         break;
       case MotionState.moving:
         // Slight movement: moderate FPS
