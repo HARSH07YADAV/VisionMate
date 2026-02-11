@@ -48,6 +48,9 @@ dependencies:
   # OCR text recognition for reading signs, labels
   google_mlkit_text_recognition: ^0.13.0
 
+  # Week 2: Earcon sound effects
+  audioplayers: ^5.2.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -59,4 +62,5 @@ flutter:
   assets:
     - assets/models/yolov8n.onnx
     - assets/models/labels.txt
+    - assets/sounds/
 

@@ -68,6 +68,13 @@ class SettingsScreen extends StatelessWidget {
               
               const Divider(height: 32),
               
+              // Week 2: Verbosity Level
+              _buildSectionHeader(context, 'Verbosity'),
+              const SizedBox(height: 8),
+              _buildVerbosityTile(context, settings),
+              
+              const Divider(height: 32),
+              
               // Navigation Mode
               _buildSectionHeader(context, 'Navigation'),
               const SizedBox(height: 8),
@@ -215,6 +222,62 @@ class SettingsScreen extends StatelessWidget {
         subtitle: Text(subtitle),
         value: value,
         onChanged: onChanged,
+      ),
+    );
+  }
+
+  Widget _buildVerbosityTile(BuildContext context, SettingsService settings) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Announcement Style: ${settings.verbosityLevel.displayName}',
+              style: const TextStyle(fontSize: 18),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              settings.verbosityLevel.description,
+              style: const TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildModeButton(
+                    context,
+                    icon: Icons.volume_off,
+                    label: 'Minimal',
+                    selected: settings.verbosityLevel == VerbosityLevel.minimal,
+                    onTap: () => settings.setVerbosityLevel(VerbosityLevel.minimal),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildModeButton(
+                    context,
+                    icon: Icons.volume_down,
+                    label: 'Normal',
+                    selected: settings.verbosityLevel == VerbosityLevel.normal,
+                    onTap: () => settings.setVerbosityLevel(VerbosityLevel.normal),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildModeButton(
+                    context,
+                    icon: Icons.volume_up,
+                    label: 'Detailed',
+                    selected: settings.verbosityLevel == VerbosityLevel.detailed,
+                    onTap: () => settings.setVerbosityLevel(VerbosityLevel.detailed),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -20,6 +20,7 @@ import 'services/context_service.dart';
 import 'services/currency_service.dart';
 import 'services/learning_service.dart';
 import 'services/feedback_service.dart';
+import 'services/earcon_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/history_screen.dart';
@@ -59,6 +60,7 @@ class VisionMateApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => CurrencyService()),
         ChangeNotifierProvider(create: (_) => LearningService()),
         ChangeNotifierProvider(create: (_) => FeedbackService()),
+        ChangeNotifierProvider(create: (_) => EarconService()),
       ],
       child: Consumer<SettingsService>(
         builder: (context, settings, _) {

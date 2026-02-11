@@ -11,6 +11,8 @@ import 'settings_service.dart';
 /// - Emotional support
 /// - Distance in human terms (steps)
 /// - Confidence-aware announcements
+/// - Week 2: Priority queue with max size, stale pruning, dedup
+/// - Week 2: Verbosity-aware announcements
 class TTSService extends ChangeNotifier {
   final FlutterTts _flutterTts = FlutterTts();
   SettingsService? _settings;
@@ -22,6 +24,10 @@ class TTSService extends ChangeNotifier {
   String _lastAnnouncement = '';
   
   static const Duration cooldownDuration = Duration(seconds: 3);
+  
+  // Week 2: Queue limits
+  static const int _maxQueueSize = 5;
+  static const Duration _staleThreshold = Duration(seconds: 3);
 
   // Emotional support phrases
   static const List<String> _reassuringPhrases = [
@@ -102,7 +108,7 @@ class TTSService extends ChangeNotifier {
     };
   }
 
-  /// Build calm, short announcement for detection
+  /// Build calm, short announcement for detection (normal verbosity)
   String _buildCalmAnnouncement(Detection detection) {
     final name = detection.className;
     final distance = _metersToSteps(detection.distanceMeters);
@@ -113,6 +119,22 @@ class TTSService extends ChangeNotifier {
       return '$name, $distance, $direction';
     }
     return '$name, $distance';
+  }
+
+  /// Week 2: Build detailed announcement (detailed verbosity)
+  String _buildDetailedAnnouncement(Detection detection) {
+    final name = detection.className;
+    final distance = _metersToSteps(detection.distanceMeters);
+    final direction = _positionToDirection(detection.relativePosition);
+    final confidence = (detection.confidence * 100).toInt();
+    final danger = detection.dangerLevel.name;
+    
+    String msg = 'I see a $name, $distance';
+    if (direction.isNotEmpty) {
+      msg += ', $direction';
+    }
+    msg += '. Confidence $confidence percent, $danger risk.';
+    return msg;
   }
 
   /// Speak with confidence indicator
@@ -196,10 +218,18 @@ class TTSService extends ChangeNotifier {
     if (priority == SpeechPriority.interrupt) {
       await _speakImmediately(request);
     } else if (priority == SpeechPriority.high && _isSpeaking) {
-      _queue.insert(0, request);
+      // Week 2: Check for duplicate in queue before adding
+      if (!_isDuplicateInQueue(message)) {
+        _queue.insert(0, request);
+        _pruneQueue();
+      }
     } else {
-      _queue.add(request);
-      _queue.sort((a, b) => a.priority.index.compareTo(b.priority.index));
+      // Week 2: Check for duplicate in queue before adding
+      if (!_isDuplicateInQueue(message)) {
+        _queue.add(request);
+        _queue.sort((a, b) => a.priority.index.compareTo(b.priority.index));
+        _pruneQueue();
+      }
       if (!_isSpeaking) {
         _processQueue();
       }
@@ -219,9 +249,37 @@ class TTSService extends ChangeNotifier {
 
   void _processQueue() {
     if (_queue.isEmpty || _isSpeaking) return;
+    
+    // Week 2: Remove stale messages before processing
+    _removeStaleMessages();
+    
+    if (_queue.isEmpty) return;
+    
     final next = _queue.removeAt(0);
     _lastAnnouncement = next.message;
     _flutterTts.speak(next.message);
+  }
+
+  /// Week 2: Check if identical message already exists in queue
+  bool _isDuplicateInQueue(String message) {
+    return _queue.any((r) => r.message == message);
+  }
+
+  /// Week 2: Remove messages older than stale threshold
+  void _removeStaleMessages() {
+    final now = DateTime.now();
+    _queue.removeWhere((r) => now.difference(r.timestamp) > _staleThreshold);
+  }
+
+  /// Week 2: Enforce max queue size, drop lowest priority
+  void _pruneQueue() {
+    // Remove stale first
+    _removeStaleMessages();
+    
+    // If still over limit, drop lowest priority (end of sorted list)
+    while (_queue.length > _maxQueueSize) {
+      _queue.removeLast();
+    }
   }
 
   // ==================== Detection Announcements ====================
@@ -237,6 +295,32 @@ class TTSService extends ChangeNotifier {
 
     // Use the new calm announcement format
     final message = _buildCalmAnnouncement(detection);
+
+    await speak(
+      message,
+      priority: priority,
+      cooldownKey: '${detection.className}_${detection.relativePosition}',
+    );
+  }
+
+  /// Week 2: Speak detection with verbosity awareness
+  Future<void> speakDetectionWithVerbosity(
+    Detection detection,
+    VerbosityLevel verbosity,
+  ) async {
+    // In minimal mode, TTS is skipped (earcons handle it)
+    if (verbosity == VerbosityLevel.minimal) return;
+
+    final priority = switch (detection.dangerLevel) {
+      DangerLevel.critical => SpeechPriority.interrupt,
+      DangerLevel.high => SpeechPriority.high,
+      DangerLevel.medium => SpeechPriority.normal,
+      _ => SpeechPriority.low,
+    };
+
+    final message = verbosity == VerbosityLevel.detailed
+        ? _buildDetailedAnnouncement(detection)
+        : _buildCalmAnnouncement(detection);
 
     await speak(
       message,

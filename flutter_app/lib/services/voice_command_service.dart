@@ -23,6 +23,7 @@ enum VoiceCommand {
   imOkay,           // "I'm okay", "I'm fine" (for fall)
   feedbackPositive, // "Thanks", "Helpful", "Good"
   feedbackNegative, // "Too much", "Enough", "Not helpful"
+  setVerbosity,     // Week 2: "Less talk", "More detail", "Normal talk"
   unknown,          // Unrecognized
 }
 
@@ -57,6 +58,7 @@ class VoiceCommandService extends ChangeNotifier {
   Function? onFeedbackNegative;  // User says "too much", "enough"
   Function(VoiceCommand, String)? onAnyCommand;
   Function(String)? onUnknownCommand;  // For feedback on unrecognized
+  Function(String)? onSetVerbosity;     // Week 2: "minimal", "normal", "detailed"
 
   bool get isInitialized => _isInitialized;
   bool get isListening => _isListening;
@@ -308,9 +310,27 @@ class VoiceCommandService extends ChangeNotifier {
     if (lower.contains("too much") ||
         lower.contains("enough") ||
         lower.contains("not helpful") ||
-        lower.contains("annoying") ||
-        lower.contains("shut up")) {
+        lower.contains("annoying")) {
       return _ParsedCommand(VoiceCommand.feedbackNegative);
+    }
+    
+    // === WEEK 2: VERBOSITY ===
+    if (lower.contains("less talk") ||
+        lower.contains("less talking") ||
+        lower.contains("beeps only") ||
+        lower.contains("minimal")) {
+      return _ParsedCommand(VoiceCommand.setVerbosity, 'minimal');
+    }
+    if (lower.contains("more detail") ||
+        lower.contains("more details") ||
+        lower.contains("tell me more") ||
+        lower.contains("detailed")) {
+      return _ParsedCommand(VoiceCommand.setVerbosity, 'detailed');
+    }
+    if (lower.contains("normal talk") ||
+        lower.contains("normal mode") ||
+        lower.contains("regular")) {
+      return _ParsedCommand(VoiceCommand.setVerbosity, 'normal');
     }
     
     return _ParsedCommand(VoiceCommand.unknown);
@@ -373,6 +393,11 @@ class VoiceCommandService extends ChangeNotifier {
         break;
       case VoiceCommand.feedbackNegative:
         onFeedbackNegative?.call();
+        break;
+      case VoiceCommand.setVerbosity:
+        if (objectName != null) {
+          onSetVerbosity?.call(objectName);
+        }
         break;
       case VoiceCommand.unknown:
         onUnknownCommand?.call(rawWords);

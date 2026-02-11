@@ -23,6 +23,7 @@ class SettingsService extends ChangeNotifier {
   static const String _keyUsageCount = 'usage_count';
   static const String _keyDetectionSensitivity = 'detection_sensitivity';
   static const String _keyAnnouncementFrequency = 'announcement_frequency';
+  static const String _keyVerbosityLevel = 'verbosity_level';
 
   SharedPreferences? _prefs;
   bool _isInitialized = false;
@@ -43,6 +44,7 @@ class SettingsService extends ChangeNotifier {
   int _usageCount = 0;
   double _detectionSensitivity = 0.5; // 0.0-1.0
   double _announcementFrequency = 1.0; // 0.5-2.0x
+  VerbosityLevel _verbosityLevel = VerbosityLevel.normal;
 
   // Getters
   bool get isInitialized => _isInitialized;
@@ -59,6 +61,7 @@ class SettingsService extends ChangeNotifier {
   int get usageCount => _usageCount;
   double get detectionSensitivity => _detectionSensitivity;
   double get announcementFrequency => _announcementFrequency;
+  VerbosityLevel get verbosityLevel => _verbosityLevel;
 
   /// Initialize and load saved preferences
   Future<void> initialize() async {
@@ -82,6 +85,7 @@ class SettingsService extends ChangeNotifier {
       _usageCount = _prefs!.getInt(_keyUsageCount) ?? 0;
       _detectionSensitivity = _prefs!.getDouble(_keyDetectionSensitivity) ?? 0.5;
       _announcementFrequency = _prefs!.getDouble(_keyAnnouncementFrequency) ?? 1.0;
+      _verbosityLevel = VerbosityLevel.values[_prefs!.getInt(_keyVerbosityLevel) ?? 1]; // default: normal
       
       // Auto-upgrade to advanced mode after 50 uses
       if (_autoAdjust && _usageCount > 50 && _userMode == UserExperienceMode.beginner) {
@@ -174,6 +178,14 @@ class SettingsService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Week 2: Set verbosity level
+  Future<void> setVerbosityLevel(VerbosityLevel level) async {
+    _verbosityLevel = level;
+    await _prefs?.setInt(_keyVerbosityLevel, level.index);
+    debugPrint('[Settings] Verbosity set to: ${level.name}');
+    notifyListeners();
+  }
+
   Future<void> setSpeechRate(double rate) async {
     _speechRate = rate.clamp(0.1, 1.0);
     await _prefs?.setDouble(_keySpeechRate, _speechRate);
@@ -234,6 +246,7 @@ class SettingsService extends ChangeNotifier {
     await setAutoAdjust(true);
     await setDetectionSensitivity(0.5);
     await setAnnouncementFrequency(1.0);
+    await setVerbosityLevel(VerbosityLevel.normal);
   }
 }
 
@@ -297,3 +310,31 @@ enum AppNavigationMode {
   }
 }
 
+/// Week 2: Verbosity levels for announcements
+enum VerbosityLevel {
+  minimal,   // Earcons/beeps only, no TTS for detections
+  normal,    // Brief phrases (default)
+  detailed;  // Full sentences with confidence + direction
+
+  String get displayName {
+    switch (this) {
+      case VerbosityLevel.minimal:
+        return 'Minimal (Beeps Only)';
+      case VerbosityLevel.normal:
+        return 'Normal';
+      case VerbosityLevel.detailed:
+        return 'Detailed';
+    }
+  }
+
+  String get description {
+    switch (this) {
+      case VerbosityLevel.minimal:
+        return 'Sound effects only, less talking';
+      case VerbosityLevel.normal:
+        return 'Brief spoken phrases';
+      case VerbosityLevel.detailed:
+        return 'Full sentences with confidence';
+    }
+  }
+}

@@ -20,6 +20,7 @@ import '../services/context_service.dart';
 import '../services/currency_service.dart';
 import '../services/learning_service.dart';
 import '../services/feedback_service.dart';
+import '../services/earcon_service.dart';
 import '../core/risk_calculator.dart';
 import '../widgets/detection_overlay.dart';
 
@@ -75,6 +76,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       onnxService.initialize(),
       ttsService.initialize(settings: settingsService),
       hapticService.initialize(),
+      context.read<EarconService>().initialize(),
     ]);
 
     // Apply haptic setting
@@ -202,6 +204,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // New: Unknown command feedback
     voiceService.onUnknownCommand = (String words) {
       tts.speak("I didn't understand. Try 'what's ahead' or 'help'.");
+    };
+    
+    // Week 2: Verbosity voice commands
+    voiceService.onSetVerbosity = (String level) {
+      final settings = context.read<SettingsService>();
+      final VerbosityLevel verbosity;
+      switch (level) {
+        case 'minimal':
+          verbosity = VerbosityLevel.minimal;
+          break;
+        case 'detailed':
+          verbosity = VerbosityLevel.detailed;
+          break;
+        default:
+          verbosity = VerbosityLevel.normal;
+      }
+      settings.setVerbosityLevel(verbosity);
+      tts.speakImmediately('Switched to ${verbosity.displayName} mode.');
     };
     
     // Initialize learning services
@@ -432,6 +452,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _pathClearTimer = Timer.periodic(Duration(seconds: intervalSeconds), (_) {
       final timeSinceDetection = DateTime.now().difference(_lastDetectionTime);
       if (timeSinceDetection.inSeconds > 3 && _isDetecting) {
+        // Week 2: Play earcon for path clear
+        context.read<EarconService>().playPathClear();
         context.read<TTSService>().speakPathClear();
       }
     });
@@ -512,15 +534,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // Use tracking to find NEW detections (Feature 3)
         final newDetections = trackingService.updateTrackers(detections);
 
-        // Announce and vibrate for new detections
-        for (final detection in newDetections.take(2)) {
+        // Announce and vibrate for new detections (Week 2: with verbosity)
+        final verbosity = settings.verbosityLevel;
+        
+        // Week 2: Group detections to reduce noise
+        final grouped = trackingService.groupDetections(newDetections);
+
+        for (final detection in grouped.take(2)) {
           // Haptic with proximity (Feature 9)
           if (settings.vibrationEnabled) {
             await hapticService.vibrateForDetection(detection);
           }
 
-          // TTS with priority (Feature 4)
-          await ttsService.speakDetection(detection);
+          // Week 2: Earcon for spatial audio cue
+          final earconService = context.read<EarconService>();
+          await earconService.playForDetection(detection);
+
+          // TTS with priority and verbosity (Feature 4 + Week 2)
+          await ttsService.speakDetectionWithVerbosity(detection, verbosity);
         }
         
         // Provide directional guidance (move left/right/back)
