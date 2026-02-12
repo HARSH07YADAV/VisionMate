@@ -54,19 +54,19 @@ description: VisionMate weekly development roadmap – what's done and what's ne
 
 ---
 
-### Week 2 — Audio & Speech Improvements
+### ✅ Week 2 — Audio & Speech Improvements (COMPLETED)
 
 > **Theme**: Make announcements feel like a trusted friend, not a robot
 
-| Day | Task | Details |
-|-----|------|---------|
-| Day 1 | **Smart announcement deduplication** | Improve `tracking_service.dart` – don't repeat "chair ahead" if already said 2 seconds ago. Group nearby objects: "Multiple objects ahead" instead of listing each |
-| Day 2-3 | **Priority-based speech queue** | Build a speech queue in `tts_service.dart`. Urgent messages interrupt non-urgent ones. Avoid stacking of 5 announcements when entering a cluttered room |
-| Day 4 | **Earcon / sound effects** | Add distinct short sounds for: path clear (soft chime), danger close (sharp beep), object found (ping). Reduces TTS fatigue – sounds are faster than words |
-| Day 5 | **Spatial audio** | Use stereo panning – obstacle on left plays slightly louder on left ear. Helps users locate object direction without words |
-| Day 6-7 | **Customizable verbosity levels** | Add 3 modes in `settings_screen.dart`: Minimal (beeps only), Normal (brief phrases), Detailed (full sentences). Let user switch by voice: "Less talk" / "More detail" |
+| Day | Task | Details | Status |
+|-----|------|---------|--------|
+| Day 1 | **Smart announcement deduplication** | Priority-based cooldowns (2s critical → 8s low), object grouping (3+ objects → "N objects ahead") in `tracking_service.dart` | ✅ Done |
+| Day 2-3 | **Priority-based speech queue** | Max 5 entries, stale message pruning (>3s), duplicate dedup, verbosity-aware announcements in `tts_service.dart` | ✅ Done |
+| Day 4 | **Earcon / sound effects** | New `earcon_service.dart` with path clear chime, danger beep, object ping via `audioplayers` | ✅ Done |
+| Day 5 | **Spatial audio** | Stereo panning via `setBalance()` – left objects → -0.8, right → +0.8 in `earcon_service.dart` | ✅ Done |
+| Day 6-7 | **Customizable verbosity levels** | `VerbosityLevel` enum (Minimal/Normal/Detailed) in `settings_service.dart`, 3-button selector in `settings_screen.dart`, voice commands "less talk"/"more detail" | ✅ Done |
 
-**Deliverable**: User hears only what matters, in the right priority, at the right volume  
+**Deliverable**: User hears only what matters, in the right priority, at the right volume ✅
 
 ---
 
