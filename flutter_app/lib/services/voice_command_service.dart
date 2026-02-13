@@ -4,7 +4,7 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_recognition_error.dart';
 
-/// Voice command types - extended for natural language
+/// Voice command types - Week 3: Expanded vocabulary + settings control
 enum VoiceCommand {
   whatsAhead,       // "What's ahead", "What do you see"
   start,            // "Start", "Begin", "Go", "Guide me"
@@ -24,10 +24,24 @@ enum VoiceCommand {
   feedbackPositive, // "Thanks", "Helpful", "Good"
   feedbackNegative, // "Too much", "Enough", "Not helpful"
   setVerbosity,     // Week 2: "Less talk", "More detail", "Normal talk"
+  // Week 3: Expanded vocabulary
+  howFar,           // "How far is [object]?", "Distance to [object]"
+  indoorsOrOutdoors,// "Am I indoors?", "Am I outdoors?", "Where am I?"
+  describeScene,    // "Describe the scene", "What's around me?"
+  navigateExit,     // "Navigate to exit", "Find the exit"
+  batteryStatus,    // "Battery status", "How much battery?"
+  // Week 3: Voice-based settings
+  toggleHighContrast,// "High contrast on/off"
+  switchLanguage,    // "Switch to Hindi", "Switch to English"
+  toggleVibration,   // "Vibration on/off"
+  // Week 3: Conversational yes/no
+  yesResponse,       // "Yes", "Sure", "Go ahead"
+  noResponse,        // "No", "Cancel", "Never mind"
   unknown,          // Unrecognized
 }
 
 /// Voice command service with natural language understanding
+/// Week 3: Expanded vocabulary, Hindi support, voice settings
 class VoiceCommandService extends ChangeNotifier {
   final stt.SpeechToText _speech = stt.SpeechToText();
   
@@ -37,6 +51,7 @@ class VoiceCommandService extends ChangeNotifier {
   String _lastCommand = '';
   String _lastWords = '';
   double _confidence = 0.0;
+  String _listeningLocale = 'en-US';
   
   // Callbacks for commands
   Function? onWhatsAhead;
@@ -59,6 +74,18 @@ class VoiceCommandService extends ChangeNotifier {
   Function(VoiceCommand, String)? onAnyCommand;
   Function(String)? onUnknownCommand;  // For feedback on unrecognized
   Function(String)? onSetVerbosity;     // Week 2: "minimal", "normal", "detailed"
+  // Week 3: Expanded vocabulary callbacks
+  Function(String)? onHowFar;          // Pass object name
+  Function? onIndoorsOrOutdoors;
+  Function? onDescribeScene;
+  Function? onNavigateExit;
+  Function? onBatteryStatus;
+  // Week 3: Voice-based settings callbacks
+  Function(bool)? onToggleHighContrast;  // true = on, false = off
+  Function(String)? onSwitchLanguage;    // "hindi" or "english"
+  Function(bool)? onToggleVibration;     // true = on, false = off
+  // Week 3: Conversational flow callbacks
+  Function(bool)? onYesNoResponse;       // true = yes, false = no
 
   bool get isInitialized => _isInitialized;
   bool get isListening => _isListening;
@@ -66,6 +93,7 @@ class VoiceCommandService extends ChangeNotifier {
   String get lastCommand => _lastCommand;
   String get lastWords => _lastWords;
   double get confidence => _confidence;
+  String get listeningLocale => _listeningLocale;
 
   /// Initialize speech recognition
   Future<bool> initialize() async {
@@ -113,6 +141,13 @@ class VoiceCommandService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Week 3: Set the listening locale for multi-language support
+  void setListeningLocale(String locale) {
+    _listeningLocale = locale;
+    debugPrint('[Voice] Listening locale set to: $locale');
+    notifyListeners();
+  }
+
   Future<void> startListening() async {
     if (!_isInitialized || !_enabled || _isListening) return;
 
@@ -124,6 +159,7 @@ class VoiceCommandService extends ChangeNotifier {
         partialResults: true,
         cancelOnError: false,
         listenMode: stt.ListenMode.confirmation,
+        localeId: _listeningLocale,
       );
       _isListening = true;
       notifyListeners();
@@ -164,7 +200,7 @@ class VoiceCommandService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Parse natural language command
+  /// Parse natural language command (English + Hindi)
   _ParsedCommand _parseCommand(String words) {
     final lower = words.toLowerCase().trim();
     
@@ -174,7 +210,11 @@ class VoiceCommandService extends ChangeNotifier {
         lower.contains("emergency") ||
         lower.contains("sos") ||
         lower.contains("call for help") ||
-        lower.contains("i need help")) {
+        lower.contains("i need help") ||
+        // Hindi emergency
+        lower.contains("मदद") ||
+        lower.contains("बचाओ") ||
+        lower.contains("आपातकाल")) {
       return _ParsedCommand(VoiceCommand.emergency);
     }
     
@@ -184,23 +224,163 @@ class VoiceCommandService extends ChangeNotifier {
         lower.contains("i'm fine") ||
         lower.contains("i am fine") ||
         lower.contains("i'm alright") ||
-        lower.contains("yes") ||
-        lower.contains("no help")) {
+        lower.contains("no help") ||
+        // Hindi
+        lower.contains("मैं ठीक हूं") ||
+        lower.contains("ठीक हूं")) {
       return _ParsedCommand(VoiceCommand.imOkay);
+    }
+    
+    // === WEEK 3: YES/NO RESPONSES (for conversational flow) ===
+    if (lower == "yes" ||
+        lower == "yeah" ||
+        lower == "sure" ||
+        lower == "okay" ||
+        lower == "go ahead" ||
+        lower == "please" ||
+        lower.contains("guide me") ||
+        // Hindi yes
+        lower == "हाँ" ||
+        lower == "हां" ||
+        lower == "ठीक है") {
+      return _ParsedCommand(VoiceCommand.yesResponse);
+    }
+    if (lower == "no" ||
+        lower == "nah" ||
+        lower == "cancel" ||
+        lower.contains("never mind") ||
+        lower.contains("forget it") ||
+        // Hindi no
+        lower == "नहीं" ||
+        lower.contains("रहने दो")) {
+      return _ParsedCommand(VoiceCommand.noResponse);
+    }
+    
+    // === WEEK 3: HOW FAR ===
+    final howFarPatterns = [
+      RegExp(r'how far is (?:the |a )?([\w\s]+)', caseSensitive: false),
+      RegExp(r'distance to (?:the |a )?([\w\s]+)', caseSensitive: false),
+      RegExp(r'how close is (?:the |a )?([\w\s]+)', caseSensitive: false),
+      // Hindi: "[object] कितनी दूर है"
+      RegExp(r'([\w\s]+)\s*कितनी दूर', caseSensitive: false),
+    ];
+    for (final pattern in howFarPatterns) {
+      final match = pattern.firstMatch(lower);
+      if (match != null && match.group(1) != null) {
+        return _ParsedCommand(VoiceCommand.howFar, match.group(1)!.trim());
+      }
+    }
+    
+    // === WEEK 3: INDOORS OR OUTDOORS ===
+    if (lower.contains("am i indoors") ||
+        lower.contains("am i outdoors") ||
+        lower.contains("am i inside") ||
+        lower.contains("am i outside") ||
+        lower.contains("where am i") ||
+        lower.contains("indoor or outdoor") ||
+        // Hindi
+        lower.contains("मैं कहाँ हूं") ||
+        lower.contains("अंदर हूं या बाहर")) {
+      return _ParsedCommand(VoiceCommand.indoorsOrOutdoors);
+    }
+    
+    // === WEEK 3: DESCRIBE SCENE ===
+    if (lower.contains("describe the scene") ||
+        lower.contains("describe scene") ||
+        lower.contains("what's around me") ||
+        lower.contains("what is around me") ||
+        lower.contains("look around") ||
+        lower.contains("tell me about surroundings") ||
+        // Hindi
+        lower.contains("आसपास क्या है") ||
+        lower.contains("दृश्य बताओ")) {
+      return _ParsedCommand(VoiceCommand.describeScene);
+    }
+    
+    // === WEEK 3: NAVIGATE TO EXIT ===
+    if (lower.contains("navigate to exit") ||
+        lower.contains("find the exit") ||
+        lower.contains("find exit") ||
+        lower.contains("way out") ||
+        lower.contains("find the door") ||
+        lower.contains("where is the exit") ||
+        // Hindi
+        lower.contains("बाहर जाने का रास्ता") ||
+        lower.contains("निकास कहाँ है")) {
+      return _ParsedCommand(VoiceCommand.navigateExit);
+    }
+    
+    // === WEEK 3: BATTERY STATUS ===
+    if (lower.contains("battery status") ||
+        lower.contains("how much battery") ||
+        lower.contains("battery level") ||
+        lower.contains("battery left") ||
+        lower.contains("charge level") ||
+        // Hindi
+        lower.contains("बैटरी कितनी है") ||
+        lower.contains("बैटरी स्तर")) {
+      return _ParsedCommand(VoiceCommand.batteryStatus);
+    }
+    
+    // === WEEK 3: VOICE-BASED SETTINGS ===
+    // High contrast
+    if (lower.contains("high contrast on") ||
+        lower.contains("turn on high contrast") ||
+        lower.contains("enable high contrast") ||
+        lower.contains("हाई कंट्रास्ट चालू")) {
+      return _ParsedCommand(VoiceCommand.toggleHighContrast, 'on');
+    }
+    if (lower.contains("high contrast off") ||
+        lower.contains("turn off high contrast") ||
+        lower.contains("disable high contrast") ||
+        lower.contains("हाई कंट्रास्ट बंद")) {
+      return _ParsedCommand(VoiceCommand.toggleHighContrast, 'off');
+    }
+    
+    // Language switching
+    if (lower.contains("switch to hindi") ||
+        lower.contains("speak in hindi") ||
+        lower.contains("hindi mode") ||
+        lower.contains("हिंदी में बोलो") ||
+        lower.contains("भाषा बदलो")) {
+      return _ParsedCommand(VoiceCommand.switchLanguage, 'hindi');
+    }
+    if (lower.contains("switch to english") ||
+        lower.contains("speak in english") ||
+        lower.contains("english mode") ||
+        lower.contains("अंग्रेजी में बोलो")) {
+      return _ParsedCommand(VoiceCommand.switchLanguage, 'english');
+    }
+    
+    // Vibration toggle
+    if (lower.contains("vibration on") ||
+        lower.contains("turn on vibration") ||
+        lower.contains("enable vibration") ||
+        lower.contains("कंपन चालू")) {
+      return _ParsedCommand(VoiceCommand.toggleVibration, 'on');
+    }
+    if (lower.contains("vibration off") ||
+        lower.contains("turn off vibration") ||
+        lower.contains("disable vibration") ||
+        lower.contains("कंपन बंद")) {
+      return _ParsedCommand(VoiceCommand.toggleVibration, 'off');
     }
     
     // === FIND OBJECT ===
     // "Find the door", "Where is the chair", "Locate the table"
     final findPatterns = [
-      RegExp(r'find (?:the |a )?(\w+)', caseSensitive: false),
-      RegExp(r'where is (?:the |a )?(\w+)', caseSensitive: false),
-      RegExp(r'locate (?:the |a )?(\w+)', caseSensitive: false),
-      RegExp(r'look for (?:the |a )?(\w+)', caseSensitive: false),
+      RegExp(r'find (?:the |a )?([\w\s]+)', caseSensitive: false),
+      RegExp(r'where is (?:the |a )?([\w\s]+)', caseSensitive: false),
+      RegExp(r'locate (?:the |a )?([\w\s]+)', caseSensitive: false),
+      RegExp(r'look for (?:the |a )?([\w\s]+)', caseSensitive: false),
+      // Hindi
+      RegExp(r'([\w\s]+)\s*कहाँ है', caseSensitive: false),
+      RegExp(r'([\w\s]+)\s*ढूंढो', caseSensitive: false),
     ];
     for (final pattern in findPatterns) {
       final match = pattern.firstMatch(lower);
       if (match != null && match.group(1) != null) {
-        return _ParsedCommand(VoiceCommand.findObject, match.group(1));
+        return _ParsedCommand(VoiceCommand.findObject, match.group(1)!.trim());
       }
     }
     
@@ -210,9 +390,12 @@ class VoiceCommandService extends ChangeNotifier {
         lower.contains("what do you see") ||
         lower.contains("what's in front") ||
         lower.contains("what is in front") ||
-        lower.contains("describe") ||
         lower.contains("scan") ||
-        lower.contains("look ahead")) {
+        lower.contains("look ahead") ||
+        // Hindi
+        lower.contains("आगे क्या है") ||
+        lower.contains("क्या दिख रहा है") ||
+        lower.contains("सामने क्या है")) {
       return _ParsedCommand(VoiceCommand.whatsAhead);
     }
     
@@ -220,7 +403,10 @@ class VoiceCommandService extends ChangeNotifier {
     if (lower.contains("is the path clear") ||
         lower.contains("path clear") ||
         lower.contains("is it safe") ||
-        lower.contains("can i go")) {
+        lower.contains("can i go") ||
+        // Hindi
+        lower.contains("रास्ता साफ है") ||
+        lower.contains("जा सकता हूं")) {
       return _ParsedCommand(VoiceCommand.pathClear);
     }
     
@@ -229,7 +415,10 @@ class VoiceCommandService extends ChangeNotifier {
         lower.contains("read that") ||
         lower.contains("what does it say") ||
         lower.contains("read the text") ||
-        lower.contains("read the sign")) {
+        lower.contains("read the sign") ||
+        // Hindi
+        lower.contains("पढ़ो") ||
+        lower.contains("क्या लिखा है")) {
       return _ParsedCommand(VoiceCommand.readText);
     }
     
@@ -240,7 +429,11 @@ class VoiceCommandService extends ChangeNotifier {
         lower.contains("what rupee") ||
         lower.contains("currency") ||
         lower.contains("how much money") ||
-        lower.contains("what denomination")) {
+        lower.contains("what denomination") ||
+        // Hindi
+        lower.contains("कितने का नोट") ||
+        lower.contains("नोट पहचानो") ||
+        lower.contains("पैसे")) {
       return _ParsedCommand(VoiceCommand.identifyCurrency);
     }
     
@@ -250,18 +443,25 @@ class VoiceCommandService extends ChangeNotifier {
         lower.contains("wait") ||
         lower.contains("be quiet") ||
         lower.contains("silence") ||
-        lower.contains("shut up")) { // Common expression
+        lower.contains("shut up") || // Common expression
+        // Hindi
+        lower.contains("रुको") ||
+        lower.contains("बंद करो") ||
+        lower.contains("चुप")) {
       return _ParsedCommand(VoiceCommand.stop);
     }
     
     // === START ===
     if (lower.contains("start") || 
         lower.contains("begin") ||
-        lower.contains("go") ||
         lower.contains("resume") ||
         lower.contains("continue") ||
         lower.contains("guide me") ||
-        lower.contains("lead the way")) {
+        lower.contains("lead the way") ||
+        // Hindi
+        lower.contains("शुरू करो") ||
+        lower.contains("चालू करो") ||
+        lower.contains("आगे बढ़ो")) {
       return _ParsedCommand(VoiceCommand.start);
     }
     
@@ -271,28 +471,44 @@ class VoiceCommandService extends ChangeNotifier {
         lower.contains("say that again") ||
         lower.contains("what was that") ||
         lower.contains("pardon") ||
-        lower.contains("come again")) {
+        lower.contains("come again") ||
+        // Hindi
+        lower.contains("दोहराओ") ||
+        lower.contains("फिर से बोलो") ||
+        lower.contains("क्या बोला")) {
       return _ParsedCommand(VoiceCommand.repeat);
     }
     
     // === SPEED ===
-    if (lower.contains("faster") || lower.contains("speed up") || lower.contains("quicker")) {
+    if (lower.contains("faster") || lower.contains("speed up") || lower.contains("quicker") ||
+        lower.contains("speak faster") ||
+        // Hindi
+        lower.contains("तेज बोलो") || lower.contains("जल्दी बोलो")) {
       return _ParsedCommand(VoiceCommand.faster);
     }
-    if (lower.contains("slower") || lower.contains("slow down")) {
+    if (lower.contains("slower") || lower.contains("slow down") ||
+        lower.contains("speak slower") ||
+        // Hindi
+        lower.contains("धीरे बोलो") || lower.contains("आहिस्ता")) {
       return _ParsedCommand(VoiceCommand.slower);
     }
     
     // === VOLUME ===
-    if (lower.contains("louder") || lower.contains("volume up") || lower.contains("speak up")) {
+    if (lower.contains("louder") || lower.contains("volume up") || lower.contains("speak up") ||
+        // Hindi
+        lower.contains("आवाज बढ़ाओ") || lower.contains("ज़ोर से")) {
       return _ParsedCommand(VoiceCommand.louder);
     }
-    if (lower.contains("quieter") || lower.contains("volume down") || lower.contains("softer")) {
+    if (lower.contains("quieter") || lower.contains("volume down") || lower.contains("softer") ||
+        // Hindi
+        lower.contains("आवाज कम") || lower.contains("धीमा")) {
       return _ParsedCommand(VoiceCommand.quieter);
     }
     
     // === SETTINGS ===
-    if (lower.contains("settings") || lower.contains("options") || lower.contains("preferences")) {
+    if (lower.contains("settings") || lower.contains("options") || lower.contains("preferences") ||
+        // Hindi
+        lower.contains("सेटिंग्स") || lower.contains("विकल्प")) {
       return _ParsedCommand(VoiceCommand.settings);
     }
     
@@ -302,7 +518,11 @@ class VoiceCommandService extends ChangeNotifier {
         lower.contains("helpful") ||
         lower.contains("good job") ||
         lower.contains("great") ||
-        lower.contains("perfect")) {
+        lower.contains("perfect") ||
+        // Hindi
+        lower.contains("धन्यवाद") ||
+        lower.contains("शुक्रिया") ||
+        lower.contains("अच्छा")) {
       return _ParsedCommand(VoiceCommand.feedbackPositive);
     }
     
@@ -310,7 +530,10 @@ class VoiceCommandService extends ChangeNotifier {
     if (lower.contains("too much") ||
         lower.contains("enough") ||
         lower.contains("not helpful") ||
-        lower.contains("annoying")) {
+        lower.contains("annoying") ||
+        // Hindi
+        lower.contains("बहुत ज्यादा") ||
+        lower.contains("बस करो")) {
       return _ParsedCommand(VoiceCommand.feedbackNegative);
     }
     
@@ -318,18 +541,25 @@ class VoiceCommandService extends ChangeNotifier {
     if (lower.contains("less talk") ||
         lower.contains("less talking") ||
         lower.contains("beeps only") ||
-        lower.contains("minimal")) {
+        lower.contains("minimal") ||
+        // Hindi
+        lower.contains("कम बोलो")) {
       return _ParsedCommand(VoiceCommand.setVerbosity, 'minimal');
     }
     if (lower.contains("more detail") ||
         lower.contains("more details") ||
         lower.contains("tell me more") ||
-        lower.contains("detailed")) {
+        lower.contains("detailed") ||
+        // Hindi
+        lower.contains("ज़्यादा बताओ") ||
+        lower.contains("विस्तार से")) {
       return _ParsedCommand(VoiceCommand.setVerbosity, 'detailed');
     }
     if (lower.contains("normal talk") ||
         lower.contains("normal mode") ||
-        lower.contains("regular")) {
+        lower.contains("regular") ||
+        // Hindi
+        lower.contains("सामान्य")) {
       return _ParsedCommand(VoiceCommand.setVerbosity, 'normal');
     }
     
@@ -398,6 +628,43 @@ class VoiceCommandService extends ChangeNotifier {
         if (objectName != null) {
           onSetVerbosity?.call(objectName);
         }
+        break;
+      // Week 3: Expanded vocabulary
+      case VoiceCommand.howFar:
+        if (objectName != null) {
+          onHowFar?.call(objectName);
+        }
+        break;
+      case VoiceCommand.indoorsOrOutdoors:
+        onIndoorsOrOutdoors?.call();
+        break;
+      case VoiceCommand.describeScene:
+        onDescribeScene?.call();
+        break;
+      case VoiceCommand.navigateExit:
+        onNavigateExit?.call();
+        break;
+      case VoiceCommand.batteryStatus:
+        onBatteryStatus?.call();
+        break;
+      // Week 3: Voice-based settings
+      case VoiceCommand.toggleHighContrast:
+        onToggleHighContrast?.call(objectName == 'on');
+        break;
+      case VoiceCommand.switchLanguage:
+        if (objectName != null) {
+          onSwitchLanguage?.call(objectName);
+        }
+        break;
+      case VoiceCommand.toggleVibration:
+        onToggleVibration?.call(objectName == 'on');
+        break;
+      // Week 3: Conversational yes/no
+      case VoiceCommand.yesResponse:
+        onYesNoResponse?.call(true);
+        break;
+      case VoiceCommand.noResponse:
+        onYesNoResponse?.call(false);
         break;
       case VoiceCommand.unknown:
         onUnknownCommand?.call(rawWords);

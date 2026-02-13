@@ -13,6 +13,7 @@ import 'settings_service.dart';
 /// - Confidence-aware announcements
 /// - Week 2: Priority queue with max size, stale pruning, dedup
 /// - Week 2: Verbosity-aware announcements
+/// - Week 3: Multi-language support (Hindi)
 class TTSService extends ChangeNotifier {
   final FlutterTts _flutterTts = FlutterTts();
   SettingsService? _settings;
@@ -37,6 +38,18 @@ class TTSService extends ChangeNotifier {
     "All clear for now.",
     "You're doing great.",
   ];
+
+  // Week 3: Hindi reassurance phrases
+  static const List<String> _reassuringPhrasesHindi = [
+    "आप सुरक्षित हैं।",
+    "अपना समय लें।",
+    "मैं आपके साथ हूं।",
+    "अभी सब ठीक है।",
+    "आप अच्छा कर रहे हैं।",
+  ];
+
+  // Week 3: Current language
+  AppLanguage _currentLanguage = AppLanguage.english;
 
   bool get isInitialized => _isInitialized;
   bool get isSpeaking => _isSpeaking;
@@ -83,6 +96,15 @@ class TTSService extends ChangeNotifier {
     if (_settings != null && _isInitialized) {
       await _flutterTts.setSpeechRate(_settings!.speechRate);
       await _flutterTts.setVolume(_settings!.speechVolume);
+    }
+  }
+
+  /// Week 3: Switch TTS language
+  Future<void> setLanguage(AppLanguage language) async {
+    _currentLanguage = language;
+    if (_isInitialized) {
+      await _flutterTts.setLanguage(language.ttsLanguage);
+      debugPrint('[TTS] Language set to: ${language.ttsLanguage}');
     }
   }
 
@@ -349,10 +371,13 @@ class TTSService extends ChangeNotifier {
 
   // ==================== Guidance Announcements ====================
 
-  /// Path is clear - calm confirmation
+  /// Path is clear - calm confirmation (Week 3: language-aware)
   Future<void> speakPathClear() async {
+    final message = _currentLanguage == AppLanguage.hindi
+        ? 'रास्ता साफ है'
+        : 'Path ahead is clear';
     await speak(
-      'Path ahead is clear',
+      message,
       priority: SpeechPriority.low,
       cooldownKey: 'path_clear',
     );
@@ -381,9 +406,12 @@ class TTSService extends ChangeNotifier {
 
   // ==================== Emotional Support ====================
 
-  /// Speak a reassuring phrase
+  /// Speak a reassuring phrase (Week 3: language-aware)
   Future<void> speakReassurance() async {
-    final phrase = _reassuringPhrases[Random().nextInt(_reassuringPhrases.length)];
+    final phrases = _currentLanguage == AppLanguage.hindi
+        ? _reassuringPhrasesHindi
+        : _reassuringPhrases;
+    final phrase = phrases[Random().nextInt(phrases.length)];
     await speak(phrase, priority: SpeechPriority.low, cooldownKey: 'reassure');
   }
 

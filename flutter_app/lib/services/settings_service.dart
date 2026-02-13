@@ -24,6 +24,7 @@ class SettingsService extends ChangeNotifier {
   static const String _keyDetectionSensitivity = 'detection_sensitivity';
   static const String _keyAnnouncementFrequency = 'announcement_frequency';
   static const String _keyVerbosityLevel = 'verbosity_level';
+  static const String _keyLanguage = 'app_language';
 
   SharedPreferences? _prefs;
   bool _isInitialized = false;
@@ -45,6 +46,7 @@ class SettingsService extends ChangeNotifier {
   double _detectionSensitivity = 0.5; // 0.0-1.0
   double _announcementFrequency = 1.0; // 0.5-2.0x
   VerbosityLevel _verbosityLevel = VerbosityLevel.normal;
+  AppLanguage _language = AppLanguage.english;
 
   // Getters
   bool get isInitialized => _isInitialized;
@@ -62,6 +64,7 @@ class SettingsService extends ChangeNotifier {
   double get detectionSensitivity => _detectionSensitivity;
   double get announcementFrequency => _announcementFrequency;
   VerbosityLevel get verbosityLevel => _verbosityLevel;
+  AppLanguage get language => _language;
 
   /// Initialize and load saved preferences
   Future<void> initialize() async {
@@ -86,6 +89,7 @@ class SettingsService extends ChangeNotifier {
       _detectionSensitivity = _prefs!.getDouble(_keyDetectionSensitivity) ?? 0.5;
       _announcementFrequency = _prefs!.getDouble(_keyAnnouncementFrequency) ?? 1.0;
       _verbosityLevel = VerbosityLevel.values[_prefs!.getInt(_keyVerbosityLevel) ?? 1]; // default: normal
+      _language = AppLanguage.values[_prefs!.getInt(_keyLanguage) ?? 0]; // default: english
       
       // Auto-upgrade to advanced mode after 50 uses
       if (_autoAdjust && _usageCount > 50 && _userMode == UserExperienceMode.beginner) {
@@ -186,6 +190,14 @@ class SettingsService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Week 3: Set app language
+  Future<void> setLanguage(AppLanguage language) async {
+    _language = language;
+    await _prefs?.setInt(_keyLanguage, language.index);
+    debugPrint('[Settings] Language set to: ${language.name}');
+    notifyListeners();
+  }
+
   Future<void> setSpeechRate(double rate) async {
     _speechRate = rate.clamp(0.1, 1.0);
     await _prefs?.setDouble(_keySpeechRate, _speechRate);
@@ -247,6 +259,7 @@ class SettingsService extends ChangeNotifier {
     await setDetectionSensitivity(0.5);
     await setAnnouncementFrequency(1.0);
     await setVerbosityLevel(VerbosityLevel.normal);
+    await setLanguage(AppLanguage.english);
   }
 }
 
@@ -335,6 +348,39 @@ enum VerbosityLevel {
         return 'Brief spoken phrases';
       case VerbosityLevel.detailed:
         return 'Full sentences with confidence';
+    }
+  }
+}
+
+/// Week 3: App language
+enum AppLanguage {
+  english,
+  hindi;
+
+  String get displayName {
+    switch (this) {
+      case AppLanguage.english:
+        return 'English';
+      case AppLanguage.hindi:
+        return 'हिन्दी (Hindi)';
+    }
+  }
+
+  String get localeCode {
+    switch (this) {
+      case AppLanguage.english:
+        return 'en-US';
+      case AppLanguage.hindi:
+        return 'hi-IN';
+    }
+  }
+
+  String get ttsLanguage {
+    switch (this) {
+      case AppLanguage.english:
+        return 'en-US';
+      case AppLanguage.hindi:
+        return 'hi-IN';
     }
   }
 }

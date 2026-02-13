@@ -31,6 +31,11 @@ description: VisionMate weekly development roadmap – what's done and what's ne
 | 16 | **Context Service** – Scene-level understanding of environment | `context_service.dart` |
 | 17 | **Background Service** – Continues running when app is minimised | `background_service.dart` |
 | 18 | **Object Tracking** – Track previously seen objects to reduce repeat alerts | `tracking_service.dart` |
+| 19 | **Always-on Wake Word** – Continuous "Hey Vision" detection via short-burst listening loop | `wake_word_service.dart` |
+| 20 | **Expanded Voice Commands** – "How far?", "Describe scene", "Navigate to exit", "Battery status", "Indoors/outdoors?" | `voice_command_service.dart` |
+| 21 | **Conversational Flow** – Context-aware follow-ups with yes/no handling (10s conversation window) | `conversation_flow_service.dart` |
+| 22 | **Hindi Language Support** – Hindi voice commands + TTS, language toggle in settings | `voice_command_service.dart`, `tts_service.dart`, `settings_service.dart` |
+| 23 | **Voice-Based Settings** – High contrast, language switch, vibration toggle — all via voice | `voice_command_service.dart`, `home_screen.dart` |
 
 ---
 
@@ -70,19 +75,19 @@ description: VisionMate weekly development roadmap – what's done and what's ne
 
 ---
 
-### Week 3 — Voice Command & Hands-Free Upgrades
+### ✅ Week 3 — Voice Command & Hands-Free Upgrades (COMPLETED)
 
 > **Theme**: Blind users should never need to touch the screen
 
-| Day | Task | Details |
-|-----|------|---------|
-| Day 1-2 | **Always-on voice activation** | Add wake-word detection ("Hey Vision"). Currently requires button tap or shake to start voice. Use continuous low-power listening |
-| Day 3 | **Expand command vocabulary** | Add: "How far is [object]?", "Am I indoors or outdoors?", "Describe the scene", "Navigate to exit", "Battery status" |
-| Day 4 | **Conversational flow** | After "Find the door", if door is found, auto-follow-up: "Door found on your right, about 5 steps away. Should I guide you?" |
-| Day 5 | **Multi-language support** | Add Hindi voice commands for Indian users. Detect language from device settings. Add language toggle in settings |
-| Day 6-7 | **Voice-based settings** | "Speak faster", "Speak slower", "Louder", "Turn on high contrast" – all controllable by voice without opening settings screen |
+| Day | Task | Details | Status |
+|-----|------|---------|--------|
+| Day 1-2 | **Always-on voice activation** | New `wake_word_service.dart` with continuous "Hey Vision" detection via short-burst `speech_to_text` listening loop. Auto-restart, battery-aware, pauses during active commands | ✅ Done |
+| Day 3 | **Expand command vocabulary** | 5 new commands: "How far is [object]?", "Am I indoors or outdoors?", "Describe the scene", "Navigate to exit", "Battery status". Added `battery_plus` package | ✅ Done |
+| Day 4 | **Conversational flow** | New `conversation_flow_service.dart` with context-aware follow-ups. 10s conversation window, yes/no handling, auto-offers guidance after find/describe/navigate commands | ✅ Done |
+| Day 5 | **Multi-language support** | Hindi voice commands + TTS via `AppLanguage` enum in settings. Language toggle in settings screen, `setLanguage()` in TTS, locale-aware speech recognition | ✅ Done |
+| Day 6-7 | **Voice-based settings** | "High contrast on/off", "Switch to Hindi/English", "Vibration on/off" — all controllable by voice. TTS confirmations for all setting changes | ✅ Done |
 
-**Deliverable**: Full app control via voice, zero screen touches required  
+**Deliverable**: Full app control via voice, zero screen touches required ✅
 
 ---
 

@@ -1,9 +1,9 @@
 name: vision_mate
 description: VisionMate – Smart Navigation for the Blind
-publish_to: 'none'
+publish_to: "none"
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: ">=3.0.0 <4.0.0"
 
 dependencies:
   flutter:
@@ -11,45 +11,48 @@ dependencies:
 
   # Image processing
   image: ^4.1.7
-  
+
   # State management
   provider: ^6.1.2
-  
+
   # Permissions
   permission_handler: ^11.3.1
-  
+
   # Camera
   camera: ^0.10.5+9
-  
+
   # Text-to-Speech
   flutter_tts: ^3.8.5
-  
+
   # Haptic feedback
   vibration: ^3.1.5
-  
+
   # ONNX Runtime
   onnxruntime: ^1.4.1
-  
+
   # Settings & Storage
   shared_preferences: ^2.2.2
   sqflite: ^2.3.2
   path_provider: ^2.1.2
-  
+
   # Location & Emergency
   geolocator: ^11.0.0
   url_launcher: ^6.2.4
-  
+
   # Voice commands
   speech_to_text: ^7.0.0
-  
+
   # Shake detection for hands-free activation
   sensors_plus: ^4.0.2
-  
+
   # OCR text recognition for reading signs, labels
   google_mlkit_text_recognition: ^0.13.0
 
   # Week 2: Earcon sound effects
   audioplayers: ^5.2.1
+
+  # Week 3: Battery status voice command
+  battery_plus: ^6.0.0
 
 dev_dependencies:
   flutter_test:
@@ -58,9 +61,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  
+
   assets:
     - assets/models/yolov8n.onnx
     - assets/models/labels.txt
     - assets/sounds/
-

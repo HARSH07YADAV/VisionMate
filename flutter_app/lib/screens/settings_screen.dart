@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../services/settings_service.dart';
 import '../services/tts_service.dart';
+import '../services/voice_command_service.dart';
+import '../services/wake_word_service.dart';
 import '../services/camera_service.dart';
 import '../services/onnx_service.dart';
 
@@ -72,6 +74,13 @@ class SettingsScreen extends StatelessWidget {
               _buildSectionHeader(context, 'Verbosity'),
               const SizedBox(height: 8),
               _buildVerbosityTile(context, settings),
+              
+              const Divider(height: 32),
+              
+              // Week 3: Language
+              _buildSectionHeader(context, 'Language'),
+              const SizedBox(height: 8),
+              _buildLanguageTile(context, settings),
               
               const Divider(height: 32),
               
@@ -272,6 +281,61 @@ class SettingsScreen extends StatelessWidget {
                     label: 'Detailed',
                     selected: settings.verbosityLevel == VerbosityLevel.detailed,
                     onTap: () => settings.setVerbosityLevel(VerbosityLevel.detailed),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Week 3: Language selection tile
+  Widget _buildLanguageTile(BuildContext context, SettingsService settings) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'App Language: ${settings.language.displayName}',
+              style: const TextStyle(fontSize: 18),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Changes voice commands and speech output',
+              style: TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildModeButton(
+                    context,
+                    icon: Icons.language,
+                    label: 'English',
+                    selected: settings.language == AppLanguage.english,
+                    onTap: () {
+                      settings.setLanguage(AppLanguage.english);
+                      context.read<TTSService>().setLanguage(AppLanguage.english);
+                      context.read<VoiceCommandService>().setListeningLocale('en-US');
+                    },
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: _buildModeButton(
+                    context,
+                    icon: Icons.translate,
+                    label: 'हिन्दी',
+                    selected: settings.language == AppLanguage.hindi,
+                    onTap: () {
+                      settings.setLanguage(AppLanguage.hindi);
+                      context.read<TTSService>().setLanguage(AppLanguage.hindi);
+                      context.read<VoiceCommandService>().setListeningLocale('hi-IN');
+                    },
                   ),
                 ),
               ],

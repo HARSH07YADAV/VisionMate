@@ -21,8 +21,11 @@ import '../services/currency_service.dart';
 import '../services/learning_service.dart';
 import '../services/feedback_service.dart';
 import '../services/earcon_service.dart';
+import '../services/wake_word_service.dart';
+import '../services/conversation_flow_service.dart';
 import '../core/risk_calculator.dart';
 import '../widgets/detection_overlay.dart';
+import 'package:battery_plus/battery_plus.dart';
 
 /// Enhanced home screen with all 20 improvements:
 /// - Large touch buttons (Feature 10)
@@ -125,6 +128,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     // Set emergency contact from settings
     emergencyService.setEmergencyContact(settingsService.emergencyContact);
     
+    // Week 3: Initialize wake word service
+    final wakeWordService = context.read<WakeWordService>();
+    await wakeWordService.initialize();
+    wakeWordService.onWakeWordDetected = () {
+      voiceService.startListening();
+    };
+    wakeWordService.onFeedback = (String message) {
+      context.read<TTSService>().speakImmediately(message);
+    };
+    // Enable wake word if voice commands are enabled
+    if (settingsService.voiceCommandsEnabled) {
+      wakeWordService.setEnabled(true);
+    }
+    
+    // Week 3: Initialize conversation flow
+    final conversationFlow = context.read<ConversationFlowService>();
+    conversationFlow.onFollowUpSpeak = (String message) {
+      context.read<TTSService>().speakImmediately(message);
+    };
+    conversationFlow.onStartGuiding = () {
+      _startDetection();
+    };
+    
     debugPrint('[Startup] Non-critical services initialized');
   }
 
@@ -170,6 +196,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _setupVoiceCommands(VoiceCommandService voiceService) {
     final tts = context.read<TTSService>();
     final activationService = context.read<AccessibilityActivationService>();
+    final conversationFlow = context.read<ConversationFlowService>();
     
     voiceService.onWhatsAhead = _announceCurrentDetections;
     voiceService.onStart = _startDetection;
@@ -182,8 +209,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     voiceService.onQuieter = () => tts.decreaseVolume();
     voiceService.onSettings = () => Navigator.pushNamed(context, '/settings');
     
-    // New: Find object command
-    voiceService.onFindObject = (String objectName) => _findObject(objectName);
+    // Find object command (Week 3: with conversational follow-up)
+    voiceService.onFindObject = (String objectName) {
+      _findObjectWithFollowUp(objectName);
+    };
     
     // New: Path clear check
     voiceService.onPathClear = _announcePathStatus;
@@ -221,7 +250,51 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           verbosity = VerbosityLevel.normal;
       }
       settings.setVerbosityLevel(verbosity);
-      tts.speakImmediately('Switched to ${verbosity.displayName} mode.');
+      tts.speakImmediately('Switched to \${verbosity.displayName} mode.');
+    };
+    
+    // === Week 3: Expanded vocabulary ===
+    voiceService.onHowFar = (String objectName) => _howFarIsObject(objectName);
+    voiceService.onIndoorsOrOutdoors = _announceEnvironment;
+    voiceService.onDescribeScene = () => _describeSceneWithFollowUp();
+    voiceService.onNavigateExit = _navigateToExit;
+    voiceService.onBatteryStatus = _announceBatteryStatus;
+    
+    // === Week 3: Voice-based settings ===
+    voiceService.onToggleHighContrast = (bool on) {
+      final settings = context.read<SettingsService>();
+      settings.setHighContrast(on);
+      tts.speakImmediately(on ? 'High contrast mode on.' : 'High contrast mode off.');
+    };
+    
+    voiceService.onSwitchLanguage = (String language) {
+      final settings = context.read<SettingsService>();
+      final lang = language == 'hindi' ? AppLanguage.hindi : AppLanguage.english;
+      settings.setLanguage(lang);
+      tts.setLanguage(lang);
+      voiceService.setListeningLocale(lang.localeCode);
+      // Pause wake word briefly for language switch
+      final wakeWord = context.read<WakeWordService>();
+      wakeWord.pause();
+      tts.speakImmediately(lang == AppLanguage.hindi 
+          ? 'भाषा हिन्दी में बदल दी गयी है।' 
+          : 'Language switched to English.');
+      // Resume wake word after TTS finishes
+      Future.delayed(const Duration(seconds: 3), () => wakeWord.resume());
+    };
+    
+    voiceService.onToggleVibration = (bool on) {
+      final settings = context.read<SettingsService>();
+      settings.setVibrationEnabled(on);
+      context.read<HapticService>().setEnabled(on);
+      tts.speakImmediately(on ? 'Vibration on.' : 'Vibration off.');
+    };
+    
+    // === Week 3: Conversational yes/no ===
+    voiceService.onYesNoResponse = (bool isYes) {
+      if (conversationFlow.isActive) {
+        conversationFlow.handleResponse(isYes);
+      }
     };
     
     // Initialize learning services
@@ -239,8 +312,39 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
   
-  /// Find a specific object in detections
-  void _findObject(String objectName) {
+  /// Find a specific object in detections (Week 3: with conversational follow-up)
+  void _findObjectWithFollowUp(String objectName) {
+    final tts = context.read<TTSService>();
+    final conversationFlow = context.read<ConversationFlowService>();
+    final lower = objectName.toLowerCase();
+    
+    final found = _detections.where(
+      (d) => d.className.toLowerCase().contains(lower)
+    ).toList();
+    
+    if (found.isEmpty) {
+      tts.speakImmediately('\$objectName not found. Try scanning around.');
+    } else {
+      final obj = found.first;
+      final distance = obj.distanceDescription;
+      final direction = obj.relativePosition?.description ?? 'ahead';
+      
+      // Week 3: Conversational follow-up
+      final followUp = conversationFlow.buildFindObjectFollowUp(
+        objectName: objectName,
+        distance: distance,
+        direction: direction,
+      );
+      conversationFlow.startFollowUp(
+        type: ConversationType.findObject,
+        message: followUp,
+        contextData: objectName,
+      );
+    }
+  }
+  
+  /// Week 3: How far is a specific object
+  void _howFarIsObject(String objectName) {
     final tts = context.read<TTSService>();
     final lower = objectName.toLowerCase();
     
@@ -249,10 +353,86 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     ).toList();
     
     if (found.isEmpty) {
-      tts.speakImmediately('$objectName not found. Try scanning around.');
+      tts.speakImmediately('\$objectName is not visible right now.');
     } else {
       final obj = found.first;
-      tts.speakImmediately('Found $objectName, ${obj.distanceDescription}, ${obj.relativePosition?.description ?? 'ahead'}.');
+      tts.speakImmediately('\$objectName is \${obj.distanceDescription}, \${obj.relativePosition?.description ?? "ahead"}.');
+    }
+  }
+  
+  /// Week 3: Announce indoor/outdoor environment
+  void _announceEnvironment() {
+    final tts = context.read<TTSService>();
+    final contextService = context.read<ContextService>();
+    
+    final env = contextService.environment;
+    final envStr = env.name;
+    tts.speakImmediately('You appear to be \$envStr.');
+  }
+  
+  /// Week 3: Describe scene with conversational follow-up
+  void _describeSceneWithFollowUp() {
+    final tts = context.read<TTSService>();
+    final conversationFlow = context.read<ConversationFlowService>();
+    
+    if (_detections.isEmpty) {
+      tts.speakImmediately('No objects detected around you. The area seems clear.');
+    } else {
+      final descriptions = _detections.take(5).map((d) =>
+        '\${d.className}, \${d.distanceDescription}, \${d.relativePosition?.description ?? "ahead"}'
+      ).join('. ');
+      tts.speakImmediately(descriptions);
+      
+      // Week 3: Follow-up
+      final followUp = conversationFlow.buildDescribeSceneFollowUp(_detections.length);
+      Future.delayed(const Duration(seconds: 3), () {
+        conversationFlow.startFollowUp(
+          type: ConversationType.describeScene,
+          message: followUp,
+        );
+      });
+    }
+  }
+  
+  /// Week 3: Navigate to exit (find doors)
+  void _navigateToExit() {
+    final tts = context.read<TTSService>();
+    final conversationFlow = context.read<ConversationFlowService>();
+    
+    final doors = _detections.where(
+      (d) => d.className.toLowerCase().contains('door')
+    ).toList();
+    
+    if (doors.isEmpty) {
+      tts.speakImmediately('No exit or door visible. Try turning around slowly.');
+    } else {
+      final door = doors.first;
+      final direction = door.relativePosition?.description ?? 'ahead';
+      final distance = door.distanceDescription;
+      
+      final followUp = conversationFlow.buildNavigateExitFollowUp(
+        exitFound: true,
+        direction: direction,
+        distance: distance,
+      );
+      conversationFlow.startFollowUp(
+        type: ConversationType.navigateExit,
+        message: followUp,
+        contextData: 'door',
+      );
+    }
+  }
+  
+  /// Week 3: Announce battery status
+  Future<void> _announceBatteryStatus() async {
+    final tts = context.read<TTSService>();
+    try {
+      final battery = Battery();
+      final level = await battery.batteryLevel;
+      tts.speakImmediately('Battery is at \$level percent.');
+    } catch (e) {
+      debugPrint('[Battery] Error: \$e');
+      tts.speakImmediately('Could not read battery level.');
     }
   }
   
@@ -263,7 +443,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       tts.speakImmediately('Path ahead is clear. You can go.');
     } else {
       final nearest = _detections.first;
-      tts.speakImmediately('Path has obstacles. ${nearest.className} ${nearest.distanceDescription}.');
+      tts.speakImmediately('Path has obstacles. \${nearest.className} \${nearest.distanceDescription}.');
     }
   }
   
